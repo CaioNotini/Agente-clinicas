@@ -1,0 +1,31 @@
+# Install base requirements first, then development tools
+-r requirements.txt
+
+# Development & Debugging
+ipython==8.18.1
+ipdb==0.13.13
+
+# Testing & Coverage
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+pytest-mock==3.12.0
+
+# Code Quality & Linting
+pylint==3.0.3
+ruff==0.1.8
+black==23.12.0
+isort==5.13.2
+mypy==1.7.1
+
+# Documentation (futuro)
+# sphinx==7.2.6
+
+# API Documentation (futuro)
+# swagger-ui-py==24.11.0
+
+# Performance Profiling
+py-spy==0.3.14
+
+# Optional: Observability/Monitoring (futuro)
+# langfuse==2.3.0

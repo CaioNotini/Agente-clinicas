@@ -1,0 +1,39 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: agente_clinicas_db
+    environment:
+      POSTGRES_USER: ${DB_USER:-dev}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-dev_local_123}
+      POSTGRES_DB: ${DB_NAME:-agente_estudo}
+      PGPASSWORD: ${DB_PASSWORD:-dev_local_123}
+    ports:
+      - "${DB_PORT:-5434}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${DB_USER:-dev} -d ${DB_NAME:-agente_estudo}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - agente_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  agente_network:
+    driver: bridge
