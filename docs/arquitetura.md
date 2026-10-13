@@ -1,3 +1,9 @@
+```
+Papel: Fonte única das decisões técnicas (D-xx), modelo de dados e questões em aberto (Q-xx).
+Entrada: docs/status.md
+Relaciona-se com: estudo.md, decisions/0001-alembic.md, status.md
+```
+
 # Arquitetura do MVP: agente de agendamento para clínicas via WhatsApp
 
 Outubro de 2026 · versão 2.1 · documento de referência para os sócios e para o desenvolvimento · alinhado ao plano de estudo v1.2
@@ -144,7 +150,7 @@ agente-clinica/
 │   ├── auditoria/       # escrita em log_auditoria, handoffs e consents
 │   ├── painel/          # rotas e telas do painel da clínica
 │   ├── auth/            # login, usuários do painel, permissões por clínica
-│   └── db/              # modelos e migrations (Alembic)
+│   └── db/              # modelos (migrations do Alembic ficam na raiz do repo, ver ADR 0001)
 ├── tests/
 │   ├── unit/            # regras de negócio sem I/O
 │   ├── integration/     # banco real, fila, lock
@@ -177,7 +183,7 @@ Um banco, `tenant_id` em toda tabela. Nomes idênticos entre estudo e MVP.
 | `profissionais`, `servicos`, `profissional_servicos`, `horarios_trabalho` | 2 | Base da agenda |
 | `regras_agendamento` | 2 | Antecedência mínima e máxima, janela de cancelamento |
 | `pacientes_contatos` | 2 | Nome e telefone, sem prontuário |
-| `conversas` | 2 | `estado_conversa`, `human_mode`, `contato_id` |
+| `conversas` | 2 | `estado_conversa`, `human_mode`, `contato_telefone` |
 | `mensagens` | 2 | `message_id` com UNIQUE |
 | `jobs` | 3 | `type`, `payload`, `status`, `run_at`, `attempts`, `locked_at`, `locked_by`, `last_error` |
 | `agendamentos` | 5 | Profissional, serviço, data e hora, status |
@@ -367,51 +373,7 @@ O ambiente local precisa de credencial IAM de permissão mínima, com acesso ao 
 
 ## 11. Plano de construção
 
-A ordem é por dependência. Não há prazo. Quando a etapa estiver pronta, passa-se para a próxima que tiver as dependências atendidas. A numeração é a mesma do plano de estudo v1.2.
-
-### Fase A: núcleo sem IA (estudo)
-
-| Etapa | Entrega | Depende de |
-|---|---|---|
-| 0 | Escopo, clínica fictícia, FAQ, lista de perguntas clínicas que o agente nunca responde | — |
-| 1 | Repositório, Docker Compose, `/health`, pytest, CI | 0 |
-| 2 | Schema multi-tenant, RLS ativo, role de worker, tabelas `handoffs`, `consents`, `privacy_requests` e `log_auditoria` (`consents` e `privacy_requests` vazias), teste de isolamento | 1 |
-| 3 | Canal CLI, fila de jobs, worker | 2 |
-| 4 | Motor de estados sem IA, lock por conversa | 3 |
-| 5 | Agendamento e handoff determinísticos | 4 |
-
-### Fase B: inteligência artificial (estudo)
-
-| Etapa | Entrega | Depende de |
-|---|---|---|
-| 6 | `LLMClient` com API direta da Anthropic (Haiku); registro de tokens e latência | 4 |
-| 7 | Classificação com confiança, mensagens fixas, `auditoria/` gravando `log_auditoria` | 5 e 6 |
-| 8 | RAG por clínica com `BedrockEmbeddingClient` (Cohere). Teste de recuperação com 20 a 30 perguntas reais antes da carga completa (Q-01) | 2 e 6 |
-| 9 | Function calling sobre o motor de estados | 5, 7 e 8 |
-| 10 | Suíte de avaliação; comparação pontual com Sonnet | 7 a 9 |
-| 11 | Lembretes T-7 e T-1: varredura, jobs, regras de borda, remarcação e escalonamento sem resposta | 5 |
-| 12 | Endurecimento: concorrência e isolamento consolidados; prompt caching se houver ganho medido | 10 e 11 |
-
-### Fase C: painel e handoff (MVP)
-
-| Etapa | Entrega | Depende de |
-|---|---|---|
-| 13 | Handoff completo: abertura, notificação ao WhatsApp pessoal da recepção, `human_mode`, takeover e devolução ao bot. Template de notificação | 7 e 12 |
-| 14 | Painel de monitoramento: login, usuários, agenda, conversas, handoffs e métricas; isolamento entre clínicas no painel | 13 e Q-17 definida |
-
-### Fase D: migração e go-live (MVP)
-
-| Etapa | Entrega | Depende de |
-|---|---|---|
-| 15 | Migração para Supabase: projeto novo, migrations, RLS, role de worker validada (Q-02), pooler testado com locks (Q-03), restauração de backup testada | 12 |
-| 16 | Migração para Bedrock: `BedrockClient` com identificador exato do modelo, reexecução da suíte de avaliação, comparação com o resultado do estudo | 10 e 15 |
-| 17 | `WhatsAppClient`: Cloud API, webhook com assinatura, templates, teste com número de teste da Meta | 13 |
-| 18 | Deploy na Lightsail: container, script de deploy, snapshot, rollback testado | 15, 16 e 17 |
-| 19 | Demo gravada com dados fictícios | 18 |
-| 20 | Pré-piloto: Business Verification, templates aprovados, Embedded Signup assistido, forma jurídica (Q-14), plano Pro e Secrets Manager. A Business Verification começa durante a etapa 17 | 18 e 19 |
-| 21 | Piloto com clínicas reais. Metas de sucesso definidas antes (Q-15) | 20 |
-
-**Observações sobre a ordem.** A etapa 20 começa antes do fim da 17, porque a verificação da Meta corre fora do controle do time. A etapa 14 depende da definição da tecnologia do painel (Q-17), que deve ser decidida até a etapa 13.
+Fonte única das etapas 0 a 21, suas entregas e dependências: [`estudo.md`](./estudo.md#6-plano-de-construção-etapas-0-a-21). Esta seção não repete a tabela — qualquer decisão técnica (D-xx) ou questão em aberto (Q-xx) citada nas entregas continua definida aqui, na seção 3 e na seção 14.
 
 ## 12. Operação, segurança e LGPD
 

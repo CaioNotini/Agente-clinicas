@@ -1,3 +1,9 @@
+```
+Papel: Fonte única do escopo do estudo e das etapas 0 a 21.
+Entrada: docs/status.md
+Relaciona-se com: arquitetura.md, decisions/0001-alembic.md, status.md
+```
+
 # Motor do agente de agendamento: projeto de estudo
 
 Núcleo do MVP construído em paralelo aos cursos da Anthropic. Este projeto é a base do MVP: a mesma sequência de etapas leva do estudo ao produto, sem reescrita.
@@ -140,7 +146,7 @@ agente-clinica/
 │   ├── auditoria/       # escrita em log_auditoria, handoffs e consents
 │   ├── painel/          # rotas e telas do painel (etapa 14)
 │   ├── auth/            # login e permissões por clínica (etapa 14)
-│   └── db/              # modelos e migrations (Alembic)
+│   └── db/              # modelos (migrations do Alembic ficam na raiz do repo, ver ADR 0001)
 ├── tests/
 │   ├── unit/
 │   ├── integration/
