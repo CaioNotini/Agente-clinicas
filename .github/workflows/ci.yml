@@ -10,12 +10,19 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
+    env:
+      DB_USER: ${{ secrets.DB_USER }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      DB_HOST: localhost
+      DB_PORT: "5434"
+      DB_NAME: agente_estudo
+
     services:
       postgres:
         image: postgres:15-alpine
         env:
-          POSTGRES_USER: dev
-          POSTGRES_PASSWORD: dev_local_123
+          POSTGRES_USER: ${{ secrets.DB_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.DB_PASSWORD }}
           POSTGRES_DB: agente_estudo
         options: >-
           --health-cmd pg_isready
@@ -23,7 +30,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
         ports:
-          - 5432:5432
+          - 5434:5432
 
     steps:
       # Checkout código
