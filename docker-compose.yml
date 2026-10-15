@@ -5,10 +5,10 @@ services:
     image: postgres:15-alpine
     container_name: agente_clinicas_db
     environment:
-      POSTGRES_USER: ${DB_USER:-dev}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-dev_local_123}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: ${DB_NAME:-agente_estudo}
-      PGPASSWORD: ${DB_PASSWORD:-dev_local_123}
+      PGPASSWORD: ${DB_PASSWORD}
     ports:
       - "${DB_PORT:-5434}:5432"
     volumes:
