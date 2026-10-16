@@ -6,11 +6,10 @@
 
 **Etapa 2, parcial.** Subtarefas, conforme a especificação em [`estudo.md`](./estudo.md#6-plano-de-construção-etapas-0-a-21):
 
-- 2.1 Extensão pgvector: concluída.
-- 2.2 Tabelas faltantes: pendente, em duas migrations (ver seção de evidências).
-- 2.3 Role `scheduler_service` com BYPASSRLS: pendente.
-- 2.4 RLS nas tabelas com `tenant_id`: pendente.
-- 2.5 Teste de isolamento entre clínicas: pendente.
+- 2.1 Tabelas faltantes: pendente, em duas migrations (ver seção de evidências).
+- 2.2 Role `scheduler_service` com BYPASSRLS: pendente.
+- 2.3 RLS nas tabelas com `tenant_id`: pendente.
+- 2.4 Teste de isolamento entre clínicas: pendente.
 
 Cada subtarefa é implementada separadamente, com especificação e plano aprovados antes de qualquer alteração.
 
