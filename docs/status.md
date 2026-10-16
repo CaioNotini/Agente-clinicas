@@ -6,10 +6,11 @@
 
 **Etapa 2, parcial.** Subtarefas, conforme a especificação em [`estudo.md`](./estudo.md#6-plano-de-construção-etapas-0-a-21):
 
-- 2.1 Tabelas faltantes: pendente, em duas migrations (ver seção de evidências).
-- 2.2 Role `scheduler_service` com BYPASSRLS: pendente.
-- 2.3 RLS nas tabelas com `tenant_id`: pendente.
-- 2.4 Teste de isolamento entre clínicas: pendente.
+- 2.1 Extensão pgvector: concluída (migration `a0ed7e989e57`). Imagem `pgvector/pgvector:pg15`, extensão `vector` habilitada e testada com upgrade e downgrade.
+- 2.2 Tabelas faltantes: concluída, em duas migrations. Migration A `98141a9414dc` (`profissional_servicos`, `regras_agendamento`, `pacientes_contatos`) e migration B `8fae39716955` (`handoffs`, `consents`, `privacy_requests`, coluna `clinicas.telefone_plantao`). Ambas testadas com upgrade, downgrade e upgrade.
+- 2.3 Role `scheduler_service` com BYPASSRLS: concluida.
+- 2.4 RLS nas tabelas com `tenant_id`: concluída (migration `e69c546938b3`). RLS e FORCE ativos nas 14 tabelas, policy `isolamento_tenant`. Aplicação conecta com `app_clinicas`, sem superusuário. Leitura verificada: sem tenant a consulta falha, com tenant A só a clínica A aparece. Escrita, atualização e exclusão cruzadas ficam para a 2.5.
+- 2.5 Teste de isolamento entre clínicas: pendente.
 
 Cada subtarefa é implementada separadamente, com especificação e plano aprovados antes de qualquer alteração.
 
@@ -48,10 +49,9 @@ Critérios de pronto de cada etapa ficam em [`estudo.md`](./estudo.md#6-plano-de
 - **Migrations:** `alembic current` e `alembic heads` mostram a revisão de partida da 2.2, `a0ed7e989e57 (head)`, após a 2.1.
 - **Migration inicial:** `63eccb28bdf3`, aplicada e intacta.
 - **Migration de extensão (2.1):** `a0ed7e989e57`, com `CREATE EXTENSION IF NOT EXISTS vector` no upgrade e `DROP EXTENSION IF EXISTS vector` no downgrade. Testada com upgrade, downgrade e upgrade. O downgrade só é seguro enquanto nenhuma tabela usar o tipo `vector`.
+- **Renome da constraint de `mensagens` (migration `d109eb356688`):** `uq_mensagens_message_id` renomeada para `pk_mensagens`, para refletir que é chave primária. Testada com upgrade, downgrade e upgrade.
 - **Imagem do banco:** `pgvector/pgvector:pg15`, em execução. O volume `postgres_data` é o mesmo de antes.
-- **Tabelas existentes:** `clinicas`, `conversas`, `jobs`, `log_auditoria`, `mensagens`, `profissionais`, `servicos`, `horarios_trabalho`, além de `alembic_version`.
-- **Tabelas faltantes (2.2):** `profissional_servicos`, `regras_agendamento`, `pacientes_contatos`, `handoffs`, `consents` e `privacy_requests`.
-- **Coluna faltante (2.2):** `clinicas.telefone_plantao`.
+- **Tabelas existentes:** `clinicas`, `conversas`, `jobs`, `log_auditoria`, `mensagens`, `profissionais`, `servicos`, `horarios_trabalho`, `profissional_servicos`, `regras_agendamento`, `pacientes_contatos`, `handoffs`, `consents`, `privacy_requests`, além de `alembic_version`. A coluna `clinicas.telefone_plantao` também existe.
 - **Identificador de mensagem:** a coluna real é `mensagens.id`, chave primária, com o identificador da Meta. A arquitetura ainda cita `message_id`.
 
 ## Bloqueios e pendências

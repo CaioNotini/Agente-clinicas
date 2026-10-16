@@ -1,23 +1,10 @@
-import os
-
-from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-load_dotenv()
+from app.config import DATABASE_URL
 
-DATABASE_URL = (
-    f"postgresql://{os.getenv('DB_USER')}:"
-    f"{os.getenv('DB_PASSWORD')}@"
-    f"{os.getenv('DB_HOST')}:"
-    f"{os.getenv('DB_PORT')}/"
-    f"{os.getenv('DB_NAME')}"
-)
-
+# Engine da aplicação, conectado com a conta sujeita ao RLS
 engine = create_engine(DATABASE_URL, echo=False)
 
-SessionLocal = sessionmaker(
-    autocommit=False,
-    autoflush=False,
-    bind=engine,
-)
+# Fábrica de sessões usada pelo restante da aplicação
+SessionLocal = sessionmaker(autoflush=False, bind=engine)

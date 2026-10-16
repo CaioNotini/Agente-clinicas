@@ -1,39 +1,19 @@
 from logging.config import fileConfig
-import os
 
-from dotenv import load_dotenv
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
-from app.db.base import Base
-from app.db import models
+from sqlalchemy import engine_from_config, pool
 
 from alembic import context
-load_dotenv()
+from app.config import MIGRATION_DATABASE_URL
+from app.db.base import Base
+from app.db import models 
 
-# this is the Alembic Config object, which provides
-# access to the values within the .ini file in use.
 config = context.config
-target_metadata = Base.metadata
 
+config.set_main_option("sqlalchemy.url", MIGRATION_DATABASE_URL.replace("%", "%%"))
 
-database_url = (
-    f"postgresql://{os.getenv('DB_USER')}:"
-    f"{os.getenv('DB_PASSWORD')}@"
-    f"{os.getenv('DB_HOST')}:"
-    f"{os.getenv('DB_PORT')}/"
-    f"{os.getenv('DB_NAME')}"
-)
-
-config.set_main_option("sqlalchemy.url", database_url)
-
-# Interpret the config file for Python logging.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# add your model's MetaData object here
-# for 'autogenerate' support
-# from myapp import mymodel
-# target_metadata = mymodel.Base.metadata
 target_metadata = Base.metadata
 
 

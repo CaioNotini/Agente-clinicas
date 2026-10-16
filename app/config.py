@@ -1,0 +1,31 @@
+# Ponto único de configuração: carrega o .env e monta as duas URLs do banco
+import os
+from pathlib import Path
+from urllib.parse import quote_plus
+
+from dotenv import load_dotenv
+
+raiz_projeto = Path(__file__).resolve().parent.parent
+load_dotenv(raiz_projeto / ".env")
+
+variaveis_obrigatorias = [
+    "DB_HOST", "DB_PORT", "DB_NAME",
+    "DB_USER", "DB_PASSWORD",
+    "APP_DB_USER", "APP_DB_PASSWORD",
+]
+faltando = [nome for nome in variaveis_obrigatorias if not os.getenv(nome)]
+if faltando:
+    raise RuntimeError(f"Variáveis ausentes no .env: {', '.join(faltando)}")
+
+_servidor_e_banco = f"{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
+
+
+def _monta_url(usuario: str, senha: str) -> str:
+    return f"postgresql://{usuario}:{quote_plus(senha)}@{_servidor_e_banco}"
+
+
+# Conta da aplicação: sem superusuário, sujeita ao RLS
+DATABASE_URL = _monta_url(os.getenv("APP_DB_USER"), os.getenv("APP_DB_PASSWORD"))
+
+# Conta de migrations: dona das tabelas, usada só pelo Alembic
+MIGRATION_DATABASE_URL = _monta_url(os.getenv("DB_USER"), os.getenv("DB_PASSWORD"))
