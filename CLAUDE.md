@@ -48,6 +48,10 @@ Para cada tarefa, nesta ordem:
 15. Escrever código claro e autoexplicativo. Adicionar comentários quando explicarem motivos, restrições ou comportamentos não óbvios. Não repetir em comentários o que o código já expressa claramente.
 16. Nenhum commit, reset, revert, amend, rebase ou push sem pedido explícito. Commits são responsabilidade dos desenvolvedores.
 17. Voce nunca, em hipotese alguma, deve acessar o arquivo .env
+18. Banco: a aplicação usa somente `app_clinicas`. Nunca usar `cnotini` (superusuário) nem `scheduler_service` (BYPASSRLS) em código de aplicação. Ver [ADR 0002](docs/decisions/0002-contas-de-banco.md).
+19. Testes de isolamento usam somente `app_clinicas` para verificar o RLS. Dados de teste podem ser criados com `cnotini`, mas a verificação não.
+20. Toda tabela nova com `tenant_id` recebe a policy `isolamento_tenant`, entra em `TABELAS_TENANT` e é coberta pelos testes de isolamento antes de ser considerada concluída.
+21. Não criar, alterar ou remover roles, policies, grants nem o RLS sem pedido explícito. Essas mudanças exigem ADR.
 
 ## Testes
 

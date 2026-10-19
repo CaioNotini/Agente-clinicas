@@ -54,6 +54,7 @@ Critérios de pronto de cada etapa ficam em [`estudo.md`](./estudo.md#6-plano-de
 - **Tabelas existentes:** `clinicas`, `conversas`, `jobs`, `log_auditoria`, `mensagens`, `profissionais`, `servicos`, `horarios_trabalho`, `profissional_servicos`, `regras_agendamento`, `pacientes_contatos`, `handoffs`, `consents`, `privacy_requests`, além de `alembic_version`. A coluna `clinicas.telefone_plantao` também existe.
 - **Identificador de mensagem:** a coluna real é `mensagens.id`, chave primária, com o identificador da Meta. A arquitetura ainda cita `message_id`.
 - **Suíte de isolamento (2.5), em 2026-10-16:** `pytest tests/isolation -v` com RLS ligado em todas as 14 tabelas, `56 passed`. Com `ALTER TABLE clinicas DISABLE ROW LEVEL SECURITY` (via `cnotini`), `4 failed, 52 passed`, as 4 falhas restritas a `clinicas`. Depois de religar com `ENABLE` e `FORCE ROW LEVEL SECURITY`, `pg_class.relrowsecurity` e `relforcerowsecurity` voltam a `true` para `clinicas`, e a suíte volta a `56 passed`. `git diff --stat` ao final da verificação não mostra nenhum arquivo de código, teste ou migration alterado.
+- **Contas de banco:** `app_clinicas` (aplicação, sem superusuário e sem BYPASSRLS), `cnotini` (migrations, superusuário), `scheduler_service` (worker, BYPASSRLS, `NOLOGIN`). Decisão registrada em [ADR 0002](./decisions/0002-contas-de-banco.md).
 
 ## Bloqueios e pendências
 

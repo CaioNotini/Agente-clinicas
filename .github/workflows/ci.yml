@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
+      APP_DB_USER: ${{ secrets.APP_DB_USER }}
+      APP_DB_PASSWORD: ${{ secrets.APP_DB_PASSWORD }}
       DB_USER: ${{ secrets.DB_USER }}
       DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
       DB_HOST: localhost
