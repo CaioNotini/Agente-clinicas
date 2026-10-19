@@ -56,6 +56,17 @@ jobs:
         run: |
           alembic upgrade head
 
+      # Define a senha da role da aplicação a partir dos secrets (nunca no repositório)
+      - name: Definir senha de app_clinicas
+        env:
+          PGPASSWORD: ${{ secrets.DB_PASSWORD }}
+          APP_USER: ${{ secrets.APP_DB_USER }}
+          APP_PW: ${{ secrets.APP_DB_PASSWORD }}
+        run: |
+          printf "ALTER ROLE :\"app_user\" PASSWORD :'app_pw';\n" > /tmp/senha.sql
+          psql -v app_user="$APP_USER" -v app_pw="$APP_PW" -h localhost -p 5434 -U "${{ secrets.DB_USER }}" -d agente_estudo -f /tmp/senha.sql
+          rm /tmp/senha.sql
+
       # Testes com coverage (usa DB_* e APP_DB_* do env do job)
       - name: Run pytest with coverage
         run: |
