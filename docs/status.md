@@ -10,7 +10,7 @@
 - 2.2 Tabelas faltantes: concluída, em duas migrations. Migration A `98141a9414dc` (`profissional_servicos`, `regras_agendamento`, `pacientes_contatos`) e migration B `8fae39716955` (`handoffs`, `consents`, `privacy_requests`, coluna `clinicas.telefone_plantao`). Ambas testadas com upgrade, downgrade e upgrade.
 - 2.3 Role `scheduler_service` com BYPASSRLS: concluida.
 - 2.4 RLS nas tabelas com `tenant_id`: concluída (migration `e69c546938b3`). RLS e FORCE ativos nas 14 tabelas, policy `isolamento_tenant`. Aplicação conecta com `app_clinicas`, sem superusuário. Leitura verificada: sem tenant a consulta falha, com tenant A só a clínica A aparece. Escrita, atualização e exclusão cruzadas ficam para a 2.5.
-- 2.5 Teste de isolamento entre clínicas: pendente.
+- 2.5 Teste de isolamento entre clínicas: concluída. `pytest tests/isolation -v` roda 56 testes (leitura, escrita, atualização e exclusão cruzadas nas 14 tabelas de `TABELAS_TENANT`), todos passando em 2026-10-16. Controle negativo feito e revertido na mesma verificação: com o RLS desligado manualmente só em `clinicas`, os 4 testes dessa tabela falham como esperado e as outras 13 continuam protegidas, confirmando que a suíte detecta a ausência do controle. Uma falha anterior (`DID NOT RAISE`) no teste de escrita para `clinicas` não precisou de correção de código. O teste e a policy já estavam corretos, a causa foi o banco de teste não estar migrado até `e69c546938b3` no momento em que o teste foi criado. Nenhum arquivo de código, teste ou migration foi alterado nesta verificação. Fora do escopo da 2.5: isolamento de tarefas assíncronas, por exemplo a role `scheduler_service`, que usa BYPASSRLS por desenho e não é exercitada por esta suíte.
 
 Cada subtarefa é implementada separadamente, com especificação e plano aprovados antes de qualquer alteração.
 
@@ -53,6 +53,7 @@ Critérios de pronto de cada etapa ficam em [`estudo.md`](./estudo.md#6-plano-de
 - **Imagem do banco:** `pgvector/pgvector:pg15`, em execução. O volume `postgres_data` é o mesmo de antes.
 - **Tabelas existentes:** `clinicas`, `conversas`, `jobs`, `log_auditoria`, `mensagens`, `profissionais`, `servicos`, `horarios_trabalho`, `profissional_servicos`, `regras_agendamento`, `pacientes_contatos`, `handoffs`, `consents`, `privacy_requests`, além de `alembic_version`. A coluna `clinicas.telefone_plantao` também existe.
 - **Identificador de mensagem:** a coluna real é `mensagens.id`, chave primária, com o identificador da Meta. A arquitetura ainda cita `message_id`.
+- **Suíte de isolamento (2.5), em 2026-10-16:** `pytest tests/isolation -v` com RLS ligado em todas as 14 tabelas, `56 passed`. Com `ALTER TABLE clinicas DISABLE ROW LEVEL SECURITY` (via `cnotini`), `4 failed, 52 passed`, as 4 falhas restritas a `clinicas`. Depois de religar com `ENABLE` e `FORCE ROW LEVEL SECURITY`, `pg_class.relrowsecurity` e `relforcerowsecurity` voltam a `true` para `clinicas`, e a suíte volta a `56 passed`. `git diff --stat` ao final da verificação não mostra nenhum arquivo de código, teste ou migration alterado.
 
 ## Bloqueios e pendências
 

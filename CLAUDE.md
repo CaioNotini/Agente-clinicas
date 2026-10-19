@@ -47,6 +47,7 @@ Para cada tarefa, nesta ordem:
 14. Utilizar nomes claros, curtos e consistentes para variáveis, funções e entidades relacionadas.
 15. Escrever código claro e autoexplicativo. Adicionar comentários quando explicarem motivos, restrições ou comportamentos não óbvios. Não repetir em comentários o que o código já expressa claramente.
 16. Nenhum commit, reset, revert, amend, rebase ou push sem pedido explícito. Commits são responsabilidade dos desenvolvedores.
+17. Voce nunca, em hipotese alguma, deve acessar o arquivo .env
 
 ## Testes
 
