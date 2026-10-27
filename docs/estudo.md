@@ -20,9 +20,8 @@ Outubro de 2026 · rascunho pessoal · v1.2 · alinhado à arquitetura do MVP v2
 6. Plano de construção
 7. O que manter idêntico ao MVP
 8. Migração: como as etapas 15 a 21 levam ao MVP
-9. Decisões em aberto
-10. Critério de pronto e README
-11. Riscos e cuidados
+9. Critério de pronto e README
+10. Riscos e cuidados
 
 ---
 
@@ -80,120 +79,46 @@ A diferença entre estudo e MVP está em três pontos: canal (CLI no estudo, Wha
 
 ## 4. Stack e arquitetura
 
-| Camada                 | Projeto de estudo                                                                | MVP                                            | O que muda na migração                                 |
-| ---------------------- | -------------------------------------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------ |
-| Backend                | Python + FastAPI (`/health` e endpoint de chat de teste)                         | Python + FastAPI                               | Nada                                                   |
-| Banco                  | PostgreSQL + pgvector em Docker Compose, RLS ativo                               | Supabase (Postgres + pgvector + RLS)           | String de conexão, migrations, pooler (etapa 15)       |
-| Fila                   | Tabela `jobs` + worker com `SKIP LOCKED`                                         | Igual                                          | Nada                                                   |
-| IA                     | Claude Haiku via API direta da Anthropic (Sonnet só para comparação na etapa 10) | Claude Haiku via Bedrock                       | `BedrockClient` substitui `AnthropicClient` (etapa 16) |
-| Embeddings             | Cohere Embed Multilingual v3 via Bedrock                                         | Igual                                          | Nada                                                   |
-| Canal                  | CLI                                                                              | WhatsApp Cloud API                             | `WhatsAppClient` substitui `CliChannel` (etapa 17)     |
-| Painel                 | Painel mínimo na etapa 14, na tecnologia definida em Q-17                        | Painel de monitoramento para as clínicas       | Mesma base                                             |
-| Autenticação do painel | Igual ao MVP (tabela `usuarios_painel`)                                          | A definir (Q-17)                               | —                                                      |
-| Execução               | Docker Compose na máquina local                                                  | Container Docker na Lightsail, instância única | Deploy (etapa 18)                                      |
-| Segredos               | Arquivo `.env` fora do repositório                                               | AWS Secrets Manager                            | Leitura de segredos (etapa 16)                         |
-| Observabilidade        | Log estruturado no Postgres                                                      | Métricas da Lightsail + log estruturado        | Acrescentar métricas de infraestrutura                 |
-| Testes                 | pytest, CI, isolamento entre tenants                                             | Igual                                          | Teste de isolamento também no painel                   |
+Comparação reduzida entre o estudo e o MVP. Detalhes de cada camada, incluindo o ponto de troca na migração, estão em [arquitetura.md, seção 4](./arquitetura.md#4-stack).
+
+| Camada                                               | No estudo                                                                        | No MVP                                         |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------- |
+| [Backend](./arquitetura.md#4-stack)                  | Python + FastAPI (`/health` e endpoint de chat de teste)                         | Python + FastAPI                               |
+| [Banco](./arquitetura.md#4-stack)                    | PostgreSQL + pgvector em Docker Compose, RLS ativo                               | Supabase (Postgres + pgvector + RLS)           |
+| [Fila](./arquitetura.md#4-stack)                     | Tabela `jobs` + worker com `SKIP LOCKED`                                         | Igual                                          |
+| [IA](./arquitetura.md#4-stack)                       | Claude Haiku via API direta da Anthropic (Sonnet só para comparação na etapa 10) | Claude Haiku via Bedrock                       |
+| [Embeddings](./arquitetura.md#4-stack)               | Cohere Embed Multilingual v3 via Bedrock                                         | Igual                                          |
+| [Canal](./arquitetura.md#4-stack)                    | CLI                                                                              | WhatsApp Cloud API                             |
+| [Painel](./arquitetura.md#4-stack)                   | Painel mínimo na etapa 14, na tecnologia definida em Q-17                        | Painel de monitoramento para as clínicas       |
+| [Autenticação do painel](./arquitetura.md#4-stack)   | Igual ao MVP (tabela `usuarios_painel`)                                          | A definir (Q-17)                               |
+| [Execução](./arquitetura.md#4-stack)                 | Docker Compose na máquina local                                                  | Container Docker na Lightsail, instância única |
+| [Segredos](./arquitetura.md#4-stack)                 | Arquivo `.env` fora do repositório                                               | AWS Secrets Manager                            |
+| [Observabilidade](./arquitetura.md#4-stack)          | Log estruturado no Postgres                                                      | Métricas da Lightsail + log estruturado        |
+| [Testes](./arquitetura.md#4-stack)                   | pytest, CI, isolamento entre tenants                                             | Igual                                          |
 
 ### Fluxo de uma mensagem
 
-```
-Mensagem (CLI no estudo, WhatsApp no MVP)
- ↓
-Channel.receive → grava mensagem (message_id UNIQUE; duplicada é ignorada)
- ↓
-Cria job PROCESS_INBOUND_MESSAGE (pending) e confirma recebimento
-
-[worker, processo separado, mesmo código-base]
- ↓
-SELECT ... FROM jobs ... FOR UPDATE SKIP LOCKED                   trava do job
- ↓
-SELECT estado_conversa ... FOR UPDATE                             trava da conversa
- ↓
-Se human_mode = true → não responde; a mensagem aparece no painel
- ↓
-Classificação de intenção (categoria + confiança)
- ├─ administrativo / agendamento → RAG / function calling
- ├─ clinico_bloqueado → mensagem fixa + handoff + log_auditoria
- ├─ urgencia → mensagem de segurança fixa + handoff urgente + log_auditoria
- └─ ambiguo (ou confiança < 0,7) → 1 esclarecimento → handoff se persistir
- ↓
-Channel.send_text(...)
- ↓
-UPDATE estado_conversa, COMMIT, job = done
-```
-
-Nas etapas 3 a 5 o bloco de classificação é regra determinística simples. A IA entra na etapa 6, por cima do motor de estados que já funciona.
+Fluxo completo de uma mensagem recebida, incluindo as duas travas de concorrência: [arquitetura.md, seção 8.1](./arquitetura.md#81-mensagem-recebida).
 
 ### Estrutura do repositório
 
-```
-agente-clinica/
-├── app/
-│   ├── core/            # estados, transições, regras de negócio
-│   ├── channels/        # base.py (Channel), cli.py (estudo), whatsapp.py (MVP)
-│   ├── llm/             # base.py (LLMClient), anthropic_client.py (estudo), bedrock_client.py (MVP)
-│   ├── embeddings/      # base.py (EmbeddingClient), bedrock_client.py (estudo e MVP)
-│   ├── agenda/          # base.py (AgendaProvider), agenda_propria.py
-│   ├── jobs/            # fila, worker, retries
-│   ├── classification/  # baseline por regra + classificador com LLM
-│   ├── rag/             # chunking, indexação, busca filtrada por tenant e categoria
-│   ├── tools/           # as 4 ferramentas expostas ao modelo
-│   ├── reminders/       # ReminderService e varredura
-│   ├── handoff/         # abertura, notificação, takeover (human_mode)
-│   ├── auditoria/       # escrita em log_auditoria, handoffs e consents
-│   ├── painel/          # rotas e telas do painel (etapa 14)
-│   ├── auth/            # login e permissões por clínica (etapa 14)
-│   └── db/              # modelos (migrations do Alembic ficam na raiz do repo, ver ADR 0001)
-├── tests/
-│   ├── unit/
-│   ├── integration/
-│   ├── concurrency/     # dois workers, mensagens seguidas
-│   └── isolation/       # vazamento entre clínicas (obrigatório)
-├── eval/                # conversas simuladas, tentativas de desvio, run_eval.py
-├── docs/                # documentacao completa do projeto
-├── .github/
-├── migrations/          # Alembic
-├── requirements.txt
-├── requirements-dev.txt
-├── CLAUDE.md
-├── docker-compose.yml
-└── README.md
-```
+Estrutura de pastas com comentários: [arquitetura.md, seção 6](./arquitetura.md#6-estrutura-do-código).
 
 ### Contratos (interfaces)
 
-| Interface                                           | Estudo                   | MVP                      | Etapa de implementação  |
-| --------------------------------------------------- | ------------------------ | ------------------------ | ----------------------- |
-| `Channel` — receber, enviar texto e template        | `CliChannel`             | `WhatsAppClient`         | 3 (CLI) e 17 (WhatsApp) |
-| `LLMClient` — completar, com ferramentas            | `AnthropicClient`        | `BedrockClient`          | 6 e 16                  |
-| `EmbeddingClient` — gerar embeddings                | `BedrockEmbeddingClient` | `BedrockEmbeddingClient` | 8                       |
-| `AgendaProvider` — disponibilidade, criar, cancelar | `AgendaPropria`          | `AgendaPropria`          | 5                       |
-| `ReminderService` — enviar lembrete                 | Igual                    | Igual                    | 11                      |
+O estudo implementa estas interfaces, com a classe concreta entre parênteses.
 
-O `LLMClient` normaliza dentro dele o formato de resposta e de chamada de ferramenta, para que o restante do código não saiba qual provedor está por trás.
+- `Channel` (`CliChannel`)
+- `LLMClient` (`AnthropicClient`)
+- `EmbeddingClient` (`BedrockEmbeddingClient`)
+- `AgendaProvider` (`AgendaPropria`)
+- `ReminderService` (igual ao MVP)
+
+Responsabilidade de cada interface e a implementação do MVP estão em [arquitetura.md, seção 6](./arquitetura.md#interfaces).
 
 ## 5. Dados
 
-Um banco só, com `tenant_id` em toda tabela. Nomes iguais aos da arquitetura v2.1.
-
-| Tabela                                                                    | Etapa                    | Observação                                                                                |
-| ------------------------------------------------------------------------- | ------------------------ | ----------------------------------------------------------------------------------------- |
-| `clinicas`                                                                | 2                        | Configuração como dado, incluindo `telefone_plantao` da recepção                          |
-| `profissionais`, `servicos`, `profissional_servicos`, `horarios_trabalho` | 2                        | Base da agenda                                                                            |
-| `regras_agendamento`                                                      | 2                        | Antecedência, janela de cancelamento                                                      |
-| `pacientes_contatos`                                                      | 2                        | Dado mínimo: nome e telefone, ambos fictícios                                             |
-| `conversas`                                                               | 2                        | `estado_conversa` e `human_mode`                                                          |
-| `mensagens`                                                               | 2                        | `message_id` com UNIQUE                                                                   |
-| `handoffs`                                                                | 2 (schema), 5 e 13 (uso) | Conversa, motivo, notificação, quem assumiu                                               |
-| `log_auditoria`                                                           | 2 (schema), 7 (uso)      | Mensagens bloqueadas ou de urgência                                                       |
-| `consents`                                                                | 2                        | Criada e **vazia**. Preenchida só no piloto                                               |
-| `privacy_requests`                                                        | 2                        | Criada e **vazia**. Preenchida só no piloto                                               |
-| `jobs`                                                                    | 3                        | `type`, `payload`, `status`, `run_at`, `attempts`, `locked_at`, `locked_by`, `last_error` |
-| `agendamentos`                                                            | 5                        | Profissional, serviço, data e hora, status                                                |
-| `conhecimento_clinica`                                                    | 8                        | Chunks, embedding, `categoria`, modelo de embedding                                       |
-| `lembretes`                                                               | 11                       | `enviar_em`, `status`, resposta do paciente                                               |
-| `usuarios_painel`                                                         | 14                       | Usuário da clínica, papel, clínica vinculada                                              |
+Um banco só, com `tenant_id` em toda tabela. Nomes iguais aos da arquitetura v2.1. Modelo de dados completo, tabela por tabela: [arquitetura.md, seção 7](./arquitetura.md#7-modelo-de-dados). A etapa que cria cada tabela está em [etapas.md](./etapas.md).
 
 Ficam fora do estudo, e entram só no MVP, a configuração de infraestrutura e as credenciais, que nunca são armazenadas no banco de estudo.
 
@@ -203,17 +128,14 @@ Fonte única das etapas 0 a 21, suas entregas e dependências: [`etapas.md`](./e
 
 ## 7. O que manter idêntico ao MVP
 
+Estados da conversa, status de job, tipos de job, categorias de intenção e as ferramentas expostas ao modelo são valores fixos, definidos em [arquitetura.md, seção 7](./arquitetura.md#7-modelo-de-dados).
+
 | Elemento                       | Valor a preservar                                                                       | Seção da v2.1 |
 | ------------------------------ | --------------------------------------------------------------------------------------- | ------------- |
 | Nomes de tabelas e campos      | Os da seção 5                                                                           | 7             |
-| Estados da conversa            | `idle`, `coletando_info`, `aguardando_confirmacao`, `escalada`, `encerrada`             | 7             |
 | `human_mode`                   | Campo em `conversas`, mesmo sem painel no estudo                                        | 8.4           |
-| Tipos de job                   | `PROCESS_INBOUND_MESSAGE`, `SEND_WHATSAPP`, `SEND_REMINDER`, `NOTIFY_HANDOFF`           | 7             |
-| Status de job                  | `pending`, `processing`, `done`, `failed`, `dead`                                       | 7             |
-| Categorias de intenção         | `administrativo`, `agendamento`, `clinico_bloqueado`, `urgencia`, `ambiguo`             | 7             |
 | Threshold inicial de confiança | 0,7, a calibrar na etapa 10                                                             | 8.3           |
 | Mensagens fixas                | Para `clinico_bloqueado` e `urgencia`, nunca geradas                                    | 8.3           |
-| Ferramentas                    | `verificar_disponibilidade`, `criar_agendamento`, `cancelar`, `buscar_duvida_frequente` | 7             |
 | Duas travas                    | `SKIP LOCKED` no job e `FOR UPDATE` na conversa                                         | 8.1           |
 | Deduplicação                   | UNIQUE no `message_id`                                                                  | 8.1           |
 | Isolamento                     | `tenant_id` em toda tabela, RLS e teste de isolamento                                   | D-03, D-04    |
@@ -243,20 +165,7 @@ A migração não é uma reescrita. Cada etapa troca uma implementação atrás 
 - **Pooler.** Worker e API seguram transações longas por causa dos locks. Confirmar que o pooler em modo transação é compatível (Q-03).
 - **Dados.** O banco de estudo contém só dado fictício e nunca recebe dado real de paciente.
 
-## 9. Decisões em aberto
-
-| Decisão                                                        | Como o projeto responde                                     | Etapa  |
-| -------------------------------------------------------------- | ----------------------------------------------------------- | ------ |
-| Rigor da classificação: 100% LLM, 100% regra ou híbrida (Q-07) | Baseline por regra contra LLM, com custo e latência medidos | 7 e 10 |
-| Tentativas de esclarecimento antes de handoff (Q-05)           | Testar 1 contra 2 tentativas nas conversas simuladas        | 10     |
-| Conjunto de tentativas de desvio (Q-08)                        | Conjunto dedicado na suíte                                  | 10     |
-| Threshold de confiança (Q-06)                                  | Ajustar 0,7 com dado, não com intuição                      | 10     |
-| Custo médio por conversa (Q-10)                                | Medido desde a etapa 6                                      | 6 e 10 |
-| Tecnologia e autenticação do painel (Q-17)                     | Decidir antes da etapa 13                                   | 13     |
-| Metas de sucesso do piloto (Q-15)                              | Não definidas agora; pré-requisito da etapa 21              | 21     |
-|                                                                |
-
-## 10. Critério de pronto e README
+## 9. Critério de pronto e README
 
 **Estudo pronto (etapa 12):**
 
@@ -274,7 +183,7 @@ A migração não é uma reescrita. Cada etapa troca uma implementação atrás 
 - Suíte de avaliação reexecutada no Bedrock, com resultado registrado.
 - Pré-requisitos do piloto atendidos (etapa 20), e metas de sucesso definidas (Q-15).
 
-## 11. Riscos e cuidados
+## 10. Riscos e cuidados
 
 - **Escopo.** Não começar WhatsApp, deploy ou painel antes da etapa 12. A ordem existe para evitar esse risco.
 - **Cronograma.** Sem prazo, o risco é a etapa se estender sem fim. O controle é o critério de pronto de cada etapa, não uma data.

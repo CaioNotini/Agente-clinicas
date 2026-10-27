@@ -35,7 +35,7 @@ Princípio que guia todas as decisões: **simples o bastante para uma pessoa ope
 
 ## 3. Decisões
 
-Decisões com status **Travada** não são revisitadas sem nova versão deste documento. Decisões **Em aberto** estão na seção 14.
+Decisões com status **Travada** não são revisitadas sem nova versão deste documento. Decisões **Em aberto** estão na seção 13.
 
 | ID   | Decisão                                                                                                                                                                                                                                                         | Status                                        | Alternativa descartada e motivo                                                                                                                                                                                |
 | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -374,7 +374,7 @@ O ambiente local precisa de credencial IAM de permissão mínima, com acesso ao 
 ## 11. Plano de construção
 
 Fonte única das etapas 0 a 21, suas entregas e dependências: [`etapas.md`](./etapas.md).
-Qualquer decisão técnica (D-xx) ou questão em aberto (Q-xx) citada nas entregas continua definida aqui, na seção 3 e na seção 14.
+Qualquer decisão técnica (D-xx) ou questão em aberto (Q-xx) citada nas entregas continua definida aqui, na seção 3 e na seção 13.
 
 ## 12. Operação, segurança e LGPD
 
@@ -394,21 +394,7 @@ Qualquer decisão técnica (D-xx) ou questão em aberto (Q-xx) citada nas entreg
 
 **Monitoramento.** Métricas da Lightsail para infraestrutura. Log estruturado para produto: taxa de confirmação de lembrete, taxa de agendamento concluído pelo agente, taxa de handoff, latência média e custo médio por conversa. Essas métricas aparecem no painel da clínica.
 
-## 13. Custos
-
-Esta seção trata só da infraestrutura. Mensalidade e preços comerciais são definidos depois do desenvolvimento (D-30). Câmbio de referência: US$1 = R$5,10. Valores de planos de terceiros devem ser confirmados nas páginas oficiais antes do piloto.
-
-| Cenário          | Composição                                                                                                                                          | Total          |
-| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
-| Demo             | Lightsail (~US$5–10), Supabase Free, WhatsApp de teste, Bedrock incluindo embeddings (~US$5)                                                        | ~R$50–75/mês   |
-| Piloto (central) | Lightsail (~US$7), Supabase Pro (US$25), WhatsApp (US$10–14), Bedrock incluindo embeddings (US$10–14), Secrets Manager (US$1–2 para 2 a 4 clínicas) | ~R$270–315/mês |
-| Piloto (desvio)  | Lightsail (~US$12), Supabase Pro + compute (~US$40), WhatsApp (~US$15), Bedrock (~US$50), Secrets Manager (~US$2)                                   | ~R$655/mês     |
-
-**Sobre o Bedrock.** Não há custo fixo: paga-se por token processado, no Haiku e no Cohere Embed. Indexar os FAQs de uma clínica custa centavos, uma vez, e cada pergunta de paciente é uma frase curta. Os preços por milhão de tokens devem ser conferidos na página oficial antes de fechar o orçamento. O Secrets Manager cobra uma taxa mensal por segredo guardado. Como há um token da Meta por clínica, esse custo cresce com o número de clínicas.
-
-**Ponto de atenção.** O cenário de desvio ultrapassa o teto de R$600 (Q-10). As alavancas, em ordem: acompanhar o custo médio por conversa desde a etapa 6; ativar prompt caching; fazer upgrade de compute do Supabase só com dado de latência que justifique; e, se o teto for rígido, decidir entre reduzir o plano no início do piloto, voltar ao RDS ou reajustar o teto.
-
-## 14. Questões em aberto
+## 13. Questões em aberto
 
 Estas questões não bloqueiam as etapas 0 a 5. A coluna "Responder até" indica a etapa em que precisam de resposta.
 
@@ -433,7 +419,7 @@ Estas questões não bloqueiam as etapas 0 a 5. A coluna "Responder até" indica
 | Q-17 | **Tecnologia e autenticação do painel.** Opções a comparar: Next.js com autenticação do próprio Supabase, ou FastAPI com templates e autenticação própria. Decidir com a etapa 13                                                                                                                                              | Etapa 13                             |
 | Q-18 | **Conversa no WhatsApp pessoal:** confirmar se o modelo do MVP é o de notificar a recepção e responder pelo painel (D-29), ou se a recepção precisa conversar diretamente pelo WhatsApp pessoal, o que seria outro produto                                                                                                     | Antes da etapa 13                    |
 
-## 15. Riscos
+## 14. Riscos
 
 | Risco                                                                                  | Impacto                                | Mitigação                                                                                                                    |
 | -------------------------------------------------------------------------------------- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
@@ -451,25 +437,4 @@ Estas questões não bloqueiam as etapas 0 a 5. A coluna "Responder até" indica
 | Piloto sem metas definidas                                                             | Alto para a decisão de seguir ou parar | Q-15 é pré-requisito da etapa 21                                                                                             |
 | Sigilo do documento e do código                                                        | Médio                                  | Publicar só o núcleo genérico; regras e detalhes do produto ficam privados                                                   |
 
-## 16. Glossário
-
-| Termo                 | Definição                                                                                            |
-| --------------------- | ---------------------------------------------------------------------------------------------------- |
-| Tenant                | Uma clínica dentro do sistema compartilhado                                                          |
-| RLS                   | Row Level Security: regra do próprio Postgres que filtra linhas por usuário ou papel                 |
-| BYPASSRLS             | Atributo de role que ignora RLS; usado só pelo worker                                                |
-| `SKIP LOCKED`         | Cláusula que pula linhas já travadas por outro processo, usada na fila de jobs                       |
-| `FOR UPDATE`          | Trava de linha em transação, usada para serializar mensagens da mesma conversa                       |
-| Job                   | Unidade de trabalho na tabela `jobs`, processada pelo worker                                         |
-| Handoff               | Transferência da conversa para a recepção humana, com takeover pelo painel                           |
-| `human_mode`          | Indica que a conversa está com a recepção; o bot não responde nela                                   |
-| Embedding             | Representação vetorial de um texto, usada na busca por similaridade                                  |
-| RAG                   | Retrieval-Augmented Generation: o modelo responde com base em trechos recuperados da base da clínica |
-| Function calling      | Mecanismo em que o modelo pede a execução de uma ferramenta definida pelo sistema                    |
-| WABA                  | WhatsApp Business Account: conta que reúne números e templates                                       |
-| phone_number_id       | Identificador do número da clínica, usado para rotear mensagens                                      |
-| Template              | Mensagem pré-aprovada pela Meta para contato fora da janela de 24 horas                              |
-| Janela de 24 horas    | Período após a última mensagem do paciente em que o negócio pode responder livremente                |
-| Embedded Signup       | Fluxo oficial da Meta para a clínica conectar seu número ao app                                      |
-| Business Verification | Verificação de negócio da Meta, pré-requisito para número de produção                                |
-| Supavisor             | Pooler de conexões do Supabase                                                                       |
+                                                               |

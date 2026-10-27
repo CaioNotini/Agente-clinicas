@@ -14,7 +14,7 @@ Critérios de pronto de cada etapa ficam em [`etapas.md`](./etapas.md). Esta tab
 
 | Etapa | Estado                            | Evidência                                                                            |
 | ----- | --------------------------------- | ------------------------------------------------------------------------------------ |
-| 0     | aberta, conteúdo pendente do Caio | Sem FAQ nem base fictícia no repositório (conforme D5)                               |
+| 0     | aberta, conteúdo pendente do Caio | FAQ e base fictícia criados em [fake_clinic/](./fake_clinic/)                        |
 | 1     | concluída                         | Repositório, Docker Compose, `/health`, pytest (3 testes passando) e CI configurados |
 | 2     | concluída                         | Ver seção "Evidências verificadas na etapa 2"                                        |
 | 3     | não iniciada                      | `app/channels/` e `app/jobs/` vazios                                                 |

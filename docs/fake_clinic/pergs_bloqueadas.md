@@ -1,6 +1,6 @@
 Papel: rascunho de perguntas bloqueadas para testar a classificação do agente, a ser substituído pelo conteúdo do Caio.
 Entrada: docs/status.md
-Relaciona-se com: ../estudo.md (etapa 0), ../arquitetura.md (seção 8.3, categorias clinico_bloqueado e urgencia), ./faq.md (fronteira administrativa).
+Relaciona-se com: ../estudo.md (etapa 0), ../arquitetura.md (seção 8.3, categorias clinico_bloqueado e urgencia), ./FAQ.md (fronteira administrativa).
 
 # Rascunho de perguntas bloqueadas
 

@@ -58,3 +58,4 @@ postgres_data/
 
 # Docker
 .dockerignore
+docs/glossario.md

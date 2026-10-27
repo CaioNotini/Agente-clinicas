@@ -20,6 +20,7 @@ class Clinica(Base):
     nome = Column(String(200), nullable=False)
     email = Column(String(200))
     telefone = Column(String(20))
+    telefone_plantao = Column(String(20))
     ativo = Column(Boolean, default=True)
     criada_em = Column(DateTime, server_default=func.now())
     
@@ -109,7 +110,6 @@ class Mensagem(Base):
     criada_em = Column(DateTime, server_default=func.now())
     
     __table_args__ = (
-        UniqueConstraint('id', name='uq_mensagens_message_id'),
         Index('idx_mensagens_tenant_contato', 'tenant_id', 'contato_telefone'),
     )
 
@@ -144,4 +144,106 @@ class LogAuditoria(Base):
     
     __table_args__ = (
         Index('idx_auditoria_tenant_acao', 'tenant_id', 'acao'),
+    )
+
+
+# Regras de agendamento de cada clínica: antecedência e janela de cancelamento
+class RegraAgendamento(Base):
+    __tablename__ = "regras_agendamento"
+
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("clinicas.tenant_id"), nullable=False)
+    antecedencia_minima_horas = Column(Integer)
+    antecedencia_maxima_dias = Column(Integer)
+    janela_cancelamento_horas = Column(Integer)
+    criada_em = Column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint('tenant_id', name='uq_regras_tenant'),
+    )
+
+
+# Relação entre profissionais e os serviços que realizam
+class ProfissionalServico(Base):
+    __tablename__ = "profissional_servicos"
+
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("clinicas.tenant_id"), nullable=False)
+    profissional_id = Column(Integer, ForeignKey("profissionais.id"), nullable=False)
+    servico_id = Column(Integer, ForeignKey("servicos.id"), nullable=False)
+    criada_em = Column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint('profissional_id', 'servico_id', name='uq_profissional_servico'),
+        Index('idx_profissional_servicos_tenant', 'tenant_id'),
+    )
+
+
+# Contatos de pacientes: dado mínimo, sem prontuário
+class PacienteContato(Base):
+    __tablename__ = "pacientes_contatos"
+
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("clinicas.tenant_id"), nullable=False)
+    nome = Column(String(200))
+    contato_telefone = Column(String(20), nullable=False)
+    criada_em = Column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint('tenant_id', 'contato_telefone', name='uq_pacientes_tenant_contato'),
+        Index('idx_pacientes_contatos_tenant', 'tenant_id'),
+    )
+
+
+# Registro de cada handoff: quem foi avisado, quem assumiu e quando voltou ao bot
+class Handoff(Base):
+    __tablename__ = "handoffs"
+
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("clinicas.tenant_id"), nullable=False)
+    conversa_id = Column(Integer, ForeignKey("conversas.id"), nullable=False)
+    motivo = Column(String(50), nullable=False)
+    notificado_em = Column(DateTime)
+    assumido_por = Column(String(100))
+    assumido_em = Column(DateTime)
+    devolvido_em = Column(DateTime)
+    criada_em = Column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        Index('idx_handoffs_tenant', 'tenant_id'),
+        Index('idx_handoffs_conversa', 'conversa_id'),
+    )
+
+
+# Histórico de consentimentos: uma linha por aceite, sem sobrescrever o anterior
+class Consent(Base):
+    __tablename__ = "consents"
+
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("clinicas.tenant_id"), nullable=False)
+    contato_telefone = Column(String(20), nullable=False)
+    tipo = Column(String(50), nullable=False)
+    versao_texto = Column(String(20), nullable=False)
+    canal = Column(String(30))
+    concedido_em = Column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        Index('idx_consents_tenant_contato', 'tenant_id', 'contato_telefone'),
+    )
+
+
+# Pedidos de privacidade do titular (acesso, correção, exclusão, portabilidade)
+class PrivacyRequest(Base):
+    __tablename__ = "privacy_requests"
+
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("clinicas.tenant_id"), nullable=False)
+    contato_telefone = Column(String(20), nullable=False)
+    tipo = Column(String(30), nullable=False)
+    status = Column(String(20), nullable=False)
+    criada_em = Column(DateTime, server_default=func.now())
+    concluida_em = Column(DateTime)
+
+    __table_args__ = (
+        Index('idx_privacy_requests_tenant', 'tenant_id'),
     )

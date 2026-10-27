@@ -52,7 +52,3 @@ O que passa a ser verdade, o que fica mais difícil, o que precisa ser revisitad
 ## Status
 
 Proposta | Aceita | Substituída por NNNN
-
-```
-
-```

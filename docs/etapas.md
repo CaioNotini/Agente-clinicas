@@ -70,9 +70,9 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
 - **Objetivo:** criar a clínica fictícia, as perguntas frequentes e a lista de perguntas que o agente nunca responde. Esse conteúdo é usado como corpus do RAG e como casos de teste.
 - **Tarefas:**
   - 0.1 `clinica.md`, com profissionais, horários, convênios e regras de agendamento.
-  - 0.2 `faq.md`, com cada pergunta marcada como permitido ou bloqueado.
-  - 0.3 `perguntas_bloqueadas.md`, preenchido pelo Caio.
-- **Código:** nenhum. Os arquivos ficam em `docs/base_ficticia/`.
+  - 0.2 `FAQ.md`, com cada pergunta marcada como permitido ou bloqueado.
+  - 0.3 `pergs_bloqueadas.md`, preenchido pelo Caio.
+- **Código:** nenhum. Os arquivos ficam em [fake_clinic/](./fake_clinic/) |.
 - **Critério de pronto:**
   - os três arquivos existem e seguem o cabeçalho de relações;
   - cada pergunta do FAQ tem categoria;
@@ -97,7 +97,7 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
 ### Etapa 2: schema multi-tenant, RLS e isolamento
 
 - **Depende de:** etapa 1.
-- **Base:** D-02, D-03, D-04, D-05, D-14, D-26 e ADR 0003.
+- **Base:** D-02, D-03, D-04, D-05, D-14, D-26.
 - **Objetivo:** criar todas as tabelas do modelo, com `tenant_id`, e garantir que uma clínica não lê nem altera dados de outra, mesmo com erro no código da aplicação.
 - **Tarefas:**
   - 2.1 extensão pgvector, com imagem e migration.
@@ -364,7 +364,7 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
 ### Etapa 19: demo gravada
 
 - **Depende de:** etapa 18.
-- **Base:** seção 13 da arquitetura e D-27.
+- **Base:** D-27.
 - **Objetivo:** gravar o vídeo que apresenta o produto às clínicas.
 - **Tarefas:**
   - 19.1 roteiro com as quatro cenas: agendamento, lembrete T-7 com confirmação, dúvida respondida e resumo diário.
@@ -406,4 +406,4 @@ A lista completa do que fica fora do MVP está na seção 10 de [arquitetura.md]
 
 ## Questões em aberto
 
-As questões Q-xx ficam em [arquitetura.md](./arquitetura.md), seção 14. Cada etapa indica quais questões precisa responder, mas o texto das questões não é copiado aqui.
+As questões Q-xx ficam em [arquitetura.md](./arquitetura.md), seção 13. Cada etapa indica quais questões precisa responder, mas o texto das questões não é copiado aqui.
