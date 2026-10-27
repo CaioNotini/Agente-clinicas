@@ -5,7 +5,7 @@ Agente de IA que atende clínicas pelo WhatsApp: agenda, remarca e cancela consu
 ## Leitura obrigatória antes de qualquer tarefa
 
 1. [`docs/principios.md`](docs/principios.md): princípios de desenvolvimento do projeto. Sempre consultar antes de começar, em qualquer etapa e para qualquer tipo de tarefa.
-2. [`docs/status.md`](docs/status.md): etapa ativa, pendências e estado real. Confirmar ali antes de agir. Não presumir o estado.
+2. [`docs/status.md`](docs/status.md): etapa ativa, pendências e estado real. Confirmar ali antes de agir. Não presumir o estado. Sequência completa das etapas em [`docs/etapas.md`](docs/etapas.md).
 3. Consultar as especificações, a arquitetura, os testes e os ADRs pertinentes à tarefa. Não carregar documentos irrelevantes sem necessidade.
 
 Se algo nesta conversa contradizer esses tres documentos, eles prevalecem e a contradição deve ser relatada.

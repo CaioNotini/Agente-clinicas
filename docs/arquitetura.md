@@ -1,7 +1,7 @@
 ```
 Papel: Fonte única das decisões técnicas (D-xx), modelo de dados e questões em aberto (Q-xx).
 Entrada: docs/status.md
-Relaciona-se com: estudo.md, decisions/0001-alembic.md, status.md
+Relaciona-se com: estudo.md, etapas.md, decisions/0001-alembic.md, status.md
 ```
 
 # Arquitetura do MVP: agente de agendamento para clínicas via WhatsApp
@@ -373,7 +373,8 @@ O ambiente local precisa de credencial IAM de permissão mínima, com acesso ao 
 
 ## 11. Plano de construção
 
-Fonte única das etapas 0 a 21, suas entregas e dependências: [`estudo.md`](./estudo.md#6-plano-de-construção-etapas-0-a-21). Esta seção não repete a tabela — qualquer decisão técnica (D-xx) ou questão em aberto (Q-xx) citada nas entregas continua definida aqui, na seção 3 e na seção 14.
+Fonte única das etapas 0 a 21, suas entregas e dependências: [`etapas.md`](./etapas.md).
+Qualquer decisão técnica (D-xx) ou questão em aberto (Q-xx) citada nas entregas continua definida aqui, na seção 3 e na seção 14.
 
 ## 12. Operação, segurança e LGPD
 

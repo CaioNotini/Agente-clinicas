@@ -1,7 +1,7 @@
 ```
-Papel: Fonte única do escopo do estudo e das etapas 0 a 21.
+Papel: Escopo, premissas e orçamento do projeto de estudo.
 Entrada: docs/status.md
-Relaciona-se com: arquitetura.md, decisions/0001-alembic.md, status.md
+Relaciona-se com: arquitetura.md, etapas.md, decisions/0001-alembic.md, status.md
 ```
 
 # Motor do agente de agendamento: projeto de estudo
@@ -17,7 +17,7 @@ Outubro de 2026 · rascunho pessoal · v1.2 · alinhado à arquitetura do MVP v2
 3. Escopo: o que entra no estudo, o que entra só no MVP
 4. Stack e arquitetura
 5. Dados
-6. Plano de construção (etapas 0 a 21)
+6. Plano de construção
 7. O que manter idêntico ao MVP
 8. Migração: como as etapas 15 a 21 levam ao MVP
 9. Decisões em aberto
@@ -197,51 +197,9 @@ Um banco só, com `tenant_id` em toda tabela. Nomes iguais aos da arquitetura v2
 
 Ficam fora do estudo, e entram só no MVP, a configuração de infraestrutura e as credenciais, que nunca são armazenadas no banco de estudo.
 
-## 6. Plano de construção (etapas 0 a 21)
+## 6. Plano de construção
 
-A ordem é por dependência, sem prazo. O estudo cobre as etapas 0 a 12. As etapas 13 e 14 são do núcleo e do painel, e as etapas 15 a 21 levam o projeto ao MVP em produção. A numeração é a mesma da arquitetura v2.1.
-
-### Fase A: núcleo sem IA
-
-| #   | Entrega                                                                                                                                            | Depende de |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| 0   | Escopo e base de conhecimento fictícia                                                                                                             | —          |
-| 1   | Repositório, Docker Compose, `/health`, pytest, CI                                                                                                 | 0          |
-| 2   | Schema multi-tenant, RLS ativo, role de worker, tabelas `handoffs`, `log_auditoria`, `consents` e `privacy_requests` (vazias), teste de isolamento | 1          |
-| 3   | Canal CLI, fila de jobs, worker                                                                                                                    | 2          |
-| 4   | Motor de estados sem IA e lock por conversa                                                                                                        | 3          |
-| 5   | Agendamento e handoff determinísticos                                                                                                              | 4          |
-
-### Fase B: inteligência artificial
-
-| #   | Entrega                                                                                                                   | Depende de |
-| --- | ------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| 6   | `LLMClient` com API direta da Anthropic (Haiku). Registro de tokens e latência                                            | 4          |
-| 7   | Classificação com confiança, mensagens fixas, módulo `auditoria/` gravando `log_auditoria`                                | 5 e 6      |
-| 8   | RAG por clínica com `BedrockEmbeddingClient` (Cohere). Teste de recuperação com 20 a 30 perguntas antes da carga completa | 2 e 6      |
-| 9   | Function calling sobre o motor de estados                                                                                 | 5, 7 e 8   |
-| 10  | Suíte de avaliação. Comparação pontual com Sonnet                                                                         | 7 a 9      |
-| 11  | Lembretes T-7 e T-1: varredura, jobs, regras de borda, remarcação, escalonamento sem resposta                             | 5          |
-| 12  | Endurecimento: concorrência e isolamento consolidados; prompt caching se houver ganho medido                              | 10 e 11    |
-
-### Fase C: painel e handoff
-
-| #   | Entrega                                                                                                                  | Depende de |
-| --- | ------------------------------------------------------------------------------------------------------------------------ | ---------- |
-| 13  | Handoff completo: abertura, notificação à recepção (canal simulado no estudo), `human_mode`, takeover e devolução ao bot | 7 e 12     |
-| 14  | Painel de monitoramento: login, usuários, agenda, conversas, handoffs, métricas. Teste de isolamento no painel           | 13 e Q-17  |
-
-### Fase D: migração e go-live
-
-| #   | Entrega                                                                                                                                                         | Depende de  |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
-| 15  | Migração para Supabase: projeto novo, migrations, RLS, role de worker validada, pooler testado com locks, restauração de backup                                 | 12          |
-| 16  | Migração para Bedrock: `BedrockClient` com o identificador exato do modelo, reexecução da suíte de avaliação e comparação com o estudo                          | 10 e 15     |
-| 17  | `WhatsAppClient`: Cloud API, webhook com assinatura, templates, teste com número de teste da Meta                                                               | 13          |
-| 18  | Deploy na Lightsail: container, script de deploy, snapshot, rollback testado                                                                                    | 15, 16 e 17 |
-| 19  | Demo gravada com dados fictícios                                                                                                                                | 18          |
-| 20  | Pré-piloto: Business Verification, templates aprovados, Embedded Signup assistido, forma jurídica, plano Pro. A Business Verification começa durante a etapa 17 | 18 e 19     |
-| 21  | Piloto com clínicas reais, com metas de sucesso definidas antes                                                                                                 | 20 e Q-15   |
+Fonte única das etapas 0 a 21, suas entregas e dependências: [`etapas.md`](./etapas.md).
 
 ## 7. O que manter idêntico ao MVP
 
@@ -296,7 +254,7 @@ A migração não é uma reescrita. Cada etapa troca uma implementação atrás 
 | Custo médio por conversa (Q-10)                                | Medido desde a etapa 6                                      | 6 e 10 |
 | Tecnologia e autenticação do painel (Q-17)                     | Decidir antes da etapa 13                                   | 13     |
 | Metas de sucesso do piloto (Q-15)                              | Não definidas agora; pré-requisito da etapa 21              | 21     |
-|  |
+|                                                                |
 
 ## 10. Critério de pronto e README
 
