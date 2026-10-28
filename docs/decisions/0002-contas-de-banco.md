@@ -45,3 +45,4 @@ Separar por papel mantém o RLS válido para a aplicação, e limita o acesso am
 - Novas tabelas com `tenant_id` precisam entrar na lista `TABELAS_TENANT` dos testes e receber a policy.
 - A role `worker_jobs` é usada só pelo processo do worker de jobs. A aplicação que atende requisições nunca se conecta com ela.
 - A senha de `worker_jobs` é definida pelo CI a partir de secret, como a de `app_clinicas`, e nunca entra em migration.
+- O worker usa `worker_jobs` somente para a fila (tabela `jobs`). Qualquer escrita específica de clínica passa por sessão `app_clinicas` com RLS, mantendo o filtro explícito de `tenant_id` como segunda barreira.

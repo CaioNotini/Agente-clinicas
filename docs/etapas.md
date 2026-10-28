@@ -142,6 +142,7 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
   - 4.1 estados `idle`, `coletando_info`, `aguardando_confirmacao`, `escalada` e `encerrada`, com transições determinísticas.
   - 4.2 lock por conversa com `SELECT ... FOR UPDATE`.
   - 4.3 teste de mensagens seguidas da mesma conversa.
+  - 4.4 escritas específicas de clínica feitas pelo worker passam por sessão `app_clinicas` com RLS, mantendo o filtro de `tenant_id` como segunda barreira, conforme [ADR 0002](./decisions/0002-contas-de-banco.md).
 - **Código:** `app/core/`, `tests/concurrency/`.
 - **Critério de pronto:** transições inválidas são rejeitadas, e o teste de mensagens seguidas não gera processamento fora de ordem nem duplicidade.
 - **Fora do escopo:** classificação de intenção.
@@ -173,6 +174,7 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
   - 6.1 interface `LLMClient`.
   - 6.2 implementação `AnthropicClient` com Claude Haiku.
   - 6.3 registro de tokens e latência no log estruturado.
+  - 6.4 backoff no retry de jobs, porque retry imediato com chamada de IA gera rajada de custo.
 - **Código:** `app/llm/`, `tests/unit/`.
 - **Critério de pronto:** o formato de resposta é testado com dublê, e uma chamada real registra tokens e latência.
 - **Atenção:** chamadas reais geram custo. Elas só são feitas com autorização prévia do Caio, conforme o orçamento do estudo.
@@ -341,6 +343,7 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
   - 17.2 validação da assinatura `X-Hub-Signature-256`.
   - 17.3 submissão dos templates de lembrete e de notificação.
   - 17.4 teste com o número de teste da Meta.
+  - 17.5 avaliar dedupe de mensagens por `(tenant_id, id)` (Q-19), quando o id passa a vir da Meta.
 - **Código:** `app/channels/whatsapp.py`, `tests/unit/`.
 - **Critério de pronto:** uma mensagem recebida pelo webhook percorre o fluxo da etapa 3, uma assinatura inválida é rejeitada em teste, e os templates estão submetidos.
 - **Atenção:** o processo de Business Verification começa nesta etapa, porque depende da fila da Meta (Q-11).

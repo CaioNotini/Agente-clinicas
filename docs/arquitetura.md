@@ -204,7 +204,7 @@ CREATE INDEX idx_lembretes_pendentes ON lembretes (enviar_em) WHERE status = 'pe
 Valores fixos, iguais no estudo e no MVP:
 
 - **Estados da conversa:** `idle`, `coletando_info`, `aguardando_confirmacao`, `escalada`, `encerrada`.
-- **Status de job:** `pending`, `processing`, `done`, `failed`, `dead`.
+- **Status de job:** `pending`, `processing`, `done`, `dead`. O estado `failed` foi removido porque o worker não o usa, e pode voltar com ADR se o backoff exigir.
 - **Tipos de job:** `PROCESS_INBOUND_MESSAGE`, `SEND_WHATSAPP`, `SEND_REMINDER`, `NOTIFY_HANDOFF`.
 - **Categorias de intenção:** `administrativo`, `agendamento`, `clinico_bloqueado`, `urgencia`, `ambiguo`.
 - **Ferramentas expostas ao modelo:** `verificar_disponibilidade`, `criar_agendamento`, `cancelar`, `buscar_duvida_frequente`.
@@ -418,6 +418,7 @@ Estas questões não bloqueiam as etapas 0 a 5. A coluna "Responder até" indica
 | Q-16 | **Valores comerciais:** mensalidade e taxa de implantação. Definidos após o desenvolvimento                                                                                                                                                                                                                                    | Após a etapa 19                      |
 | Q-17 | **Tecnologia e autenticação do painel.** Opções a comparar: Next.js com autenticação do próprio Supabase, ou FastAPI com templates e autenticação própria. Decidir com a etapa 13                                                                                                                                              | Etapa 13                             |
 | Q-18 | **Conversa no WhatsApp pessoal:** confirmar se o modelo do MVP é o de notificar a recepção e responder pelo painel (D-29), ou se a recepção precisa conversar diretamente pelo WhatsApp pessoal, o que seria outro produto                                                                                                     | Antes da etapa 13                    |
+| Q-19 | **Dedupe de mensagens por `(tenant_id, id)`.** A chave primária de `mensagens` é global, e hoje uma colisão de id entre clínicas levanta `ColisaoIdEntreTenants`. Avaliar quando o id passar a vir da Meta                                                                                                                      | Etapa 17                             |
 
 ## 14. Riscos
 
