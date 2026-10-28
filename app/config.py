@@ -12,6 +12,7 @@ variaveis_obrigatorias = [
     "DB_HOST", "DB_PORT", "DB_NAME",
     "DB_USER", "DB_PASSWORD",
     "APP_DB_USER", "APP_DB_PASSWORD",
+    "WORKER_DB_USER", "WORKER_DB_PASSWORD"
 ]
 faltando = [nome for nome in variaveis_obrigatorias if not os.getenv(nome)]
 if faltando:
@@ -29,3 +30,6 @@ DATABASE_URL = _monta_url(os.getenv("APP_DB_USER"), os.getenv("APP_DB_PASSWORD")
 
 # Conta de migrations: dona das tabelas, usada só pelo Alembic
 MIGRATION_DATABASE_URL = _monta_url(os.getenv("DB_USER"), os.getenv("DB_PASSWORD"))
+
+# Conta do worker de jobs: leitura da fila de todas as clínicas (BYPASSRLS)
+WORKER_DATABASE_URL = _monta_url(os.getenv("WORKER_DB_USER"), os.getenv("WORKER_DB_PASSWORD"))

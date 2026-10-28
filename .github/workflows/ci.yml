@@ -67,6 +67,17 @@ jobs:
           psql -v app_user="$APP_USER" -v app_pw="$APP_PW" -h localhost -p 5434 -U "${{ secrets.DB_USER }}" -d agente_estudo -f /tmp/senha.sql
           rm /tmp/senha.sql
 
+      # Define a senha da role do worker a partir dos secrets (nunca no repositório)
+      - name: Definir senha de worker_jobs
+        env:
+          PGPASSWORD: ${{ secrets.DB_PASSWORD }}
+          WORKER_USER: ${{ secrets.WORKER_DB_USER }}
+          WORKER_PW: ${{ secrets.WORKER_DB_PASSWORD }}
+        run: |
+          printf "ALTER ROLE :\"worker_user\" PASSWORD :'worker_pw';\n" > /tmp/senha_worker.sql
+          psql -v worker_user="$WORKER_USER" -v worker_pw="$WORKER_PW" -h localhost -p 5434 -U "${{ secrets.DB_USER }}" -d agente_estudo -f /tmp/senha_worker.sql
+          rm /tmp/senha_worker.sql
+
       # Testes com coverage (usa DB_* e APP_DB_* do env do job)
       - name: Run pytest with coverage
         run: |

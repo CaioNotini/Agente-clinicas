@@ -39,7 +39,11 @@ Critérios de pronto de cada etapa ficam em [`etapas.md`](./etapas.md). Esta tab
 
 ## Evidências verificadas na etapa 2
 
-- **Revalidação em 2026-10-22 (somente leitura):** `alembic heads` e `alembic current` mostram cabeça única `21bc40ab245c`, sem migrations pendentes. Roles confirmadas com os mesmos atributos do ADR 0002. RLS e FORCE RLS ativos (`true`/`true`) nas 14 tabelas de `TABELAS_TENANT`, todas com a policy `isolamento_tenant` (`cmd = ALL`, mesma condição em `USING` e `WITH CHECK`), e nenhuma tabela com `tenant_id` ficou sem essa policy. `consents` e `privacy_requests` com 0 linhas. `pytest tests/isolation -v`, com `engine_app` em todas as asserções, `56 passed`. Nenhum arquivo de código, teste, migration, configuração, role ou policy foi alterado nesta verificação.
+**Revalidado em 2026-10-27:**
+
+- `alembic heads` e `alembic current` mostram cabeça única `21bc40ab245c`, sem migrations pendentes. `alembic check` não aponta operação pendente entre `app/db/models.py` e o banco.
+- RLS e FORCE RLS ativos nas 14 tabelas de `TABELAS_TENANT`, todas com a policy `isolamento_tenant` (`cmd = ALL`, mesma condição em `USING` e `WITH CHECK`). `consents` e `privacy_requests` com 0 linhas.
+- `pytest tests/ -v`, `60 passed`: 56 casos de isolamento com `engine_app`, mais um teste de sessão ORM que insere, lê e bloqueia escrita cruzada pela conta `app_clinicas`.
 
 ## Bloqueios e pendências
 
