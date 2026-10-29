@@ -4,61 +4,52 @@
 
 ## Etapa ativa
 
-**Etapa 3, concluída em 2026-10-28.** Tarefas 3.1 (canal CLI), 3.2 (gravação em `mensagens` e criação de job com deduplicação) e 3.3 (worker com `SKIP LOCKED`, tentativas e `dead`) implementadas, com testes passando e com a cadeia do CLI ao worker exercitada ao vivo. Os critérios de pronto de [`etapas.md`](./etapas.md) para a etapa 3 não exigem CI no GitHub.
+**Etapa 4, concluída em 2026-10-29.** Tarefas 4.1 (máquina de estados e transições determinísticas), 4.2 (lock por conversa com `SELECT ... FOR UPDATE` e `lock_timeout`), 4.3 (teste de mensagens seguidas da mesma conversa) e 4.4 (escrita de clínica por sessão `app_clinicas` com RLS, ligada ao worker pelo ponto de injeção `processamento=`) implementadas, com testes passando. Evidência na seção "Evidências verificadas na etapa 4".
 
-**Próxima etapa 4** (motor de estados e lock por conversa), não iniciada. Critérios de pronto em [`etapas.md`](./etapas.md).
+**Próxima etapa 5** (agendamento e handoff determinísticos), não iniciada. Critérios de pronto em [`etapas.md`](./etapas.md).
 
 ## Estado das etapas (0 a 21)
 
 Critérios de pronto de cada etapa ficam em [`etapas.md`](./etapas.md). Esta tabela registra só o que foi verificado.
 
-| Etapa | Estado                            | Evidência                                                                            |
-| ----- | --------------------------------- | ------------------------------------------------------------------------------------ |
-| 0     | aberta, conteúdo pendente do Caio | FAQ e base fictícia criados em [fake_clinic/](./fake_clinic/)                        |
-| 1     | concluída                         | Repositório, Docker Compose, `/health`, pytest (3 testes passando) e CI configurados |
-| 2     | concluída                         | Ver seção "Evidências verificadas na etapa 2"                                        |
-| 3     | concluída                         | Ver seção "Evidências verificadas na etapa 3"                                        |
-| 4     | não iniciada                      | `app/core/` vazio                                                                    |
-| 5     | não iniciada                      | —                                                                                    |
-| 6     | não iniciada                      | `app/llm/` vazio                                                                     |
-| 7     | não iniciada                      | —                                                                                    |
-| 8     | não iniciada                      | —                                                                                    |
-| 9     | não iniciada                      | —                                                                                    |
-| 10    | não iniciada                      | —                                                                                    |
-| 11    | não iniciada                      | —                                                                                    |
-| 12    | não iniciada                      | —                                                                                    |
-| 13    | não iniciada                      | —                                                                                    |
-| 14    | não iniciada                      | —                                                                                    |
-| 15    | não iniciada                      | —                                                                                    |
-| 16    | não iniciada                      | —                                                                                    |
-| 17    | não iniciada                      | —                                                                                    |
-| 18    | não iniciada                      | —                                                                                    |
-| 19    | não iniciada                      | —                                                                                    |
-| 20    | não iniciada                      | —                                                                                    |
-| 21    | não iniciada                      | —                                                                                    |
+| Etapa | Estado                            | Evidência                                                                 |
+| ----- | --------------------------------- | ------------------------------------------------------------------------- |
+| 0     | aberta, conteúdo pendente do Caio | FAQ e base fictícia criados em [fake_clinic/](./fake_clinic/)             |
+| 1     | concluída                         | Repositório, Docker Compose, `/health`, pytest e CI                       |
+| 2     | concluída                         | Schema multi-tenant, RLS, FORCE e policy de isolamento, testado com `app_clinicas` |
+| 3     | concluída                         | Canal CLI, fila de jobs e worker com `SKIP LOCKED`, exercitado ao vivo    |
+| 4     | concluída                         | Ver seção "Evidências verificadas na etapa 4"                             |
+| 5     | não iniciada                      | próxima etapa                                                             |
+| 6     | não iniciada                      | `app/llm/` vazio                                                          |
+| 7     | não iniciada                      | —                                                                         |
+| 8     | não iniciada                      | —                                                                         |
+| 9     | não iniciada                      | —                                                                         |
+| 10    | não iniciada                      | —                                                                         |
+| 11    | não iniciada                      | —                                                                         |
+| 12    | não iniciada                      | —                                                                         |
+| 13    | não iniciada                      | —                                                                         |
+| 14    | não iniciada                      | —                                                                         |
+| 15    | não iniciada                      | —                                                                         |
+| 16    | não iniciada                      | —                                                                         |
+| 17    | não iniciada                      | —                                                                         |
+| 18    | não iniciada                      | —                                                                         |
+| 19    | não iniciada                      | —                                                                         |
+| 20    | não iniciada                      | —                                                                         |
+| 21    | não iniciada                      | —                                                                         |
 
-## Evidências verificadas na etapa 3
+## Evidências verificadas na etapa 4
 
-**Verificado em 2026-10-28:**
+**Verificado em 2026-10-29.** `pytest tests/ -v`: `113 passed`. Arquivos da etapa (`test_estados.py`, `test_lock_conversa.py`, `test_mensagens_seguidas.py`): 42 testes passando.
 
-- Cabeça do Alembic é `c77398abee4a`, a migration que substitui a role de fundo `scheduler_service` pela `worker_jobs` (login com BYPASSRLS).
-- [`decisions/0002-contas-de-banco.md`](./decisions/0002-contas-de-banco.md) atualizado pela troca de `scheduler_service` para `worker_jobs`.
-- `ColisaoIdEntreTenants` em `app/jobs/queue.py`: id de mensagem que já existe em outro tenant levanta erro explícito, em vez de virar duplicata silenciosa.
-- Worker em `app/jobs/worker.py`, conectado como `worker_jobs` por `WORKER_DATABASE_URL`.
-
-Os três testes exigidos pelos critérios de [`etapas.md`](./etapas.md) passam:
-
-- dois workers disputando o mesmo job, só um processa: `tests/concurrency/test_worker.py::test_dois_workers_so_um_processa`.
-- mensagem duplicada não gera segundo processamento: `tests/concurrency/test_dedupe_mensagens.py::test_mensagem_duplicada_nao_gera_segundo_job`.
-- job que vai para `dead` após as tentativas: `tests/concurrency/test_worker.py::test_falha_volta_a_pending_e_depois_dead`.
-
-Verificações finais da etapa 3, de 2026-10-28:
-
-- **3.1 controle do critério de tenant.** Com a linha `set_config('app.tenant_id', ...)` comentada em `app/jobs/worker.py`, `pytest tests/concurrency/test_worker.py -k tenant` falhou nos dois testes (`test_define_tenant_antes_de_processar` e `test_sem_contexto_de_tenant_cruzado`, com `assert None == <uuid>`). Restaurada a linha, os dois passaram. `git diff app/jobs/worker.py` ficou vazio, sem alteração remanescente.
-- **3.2 execução viva.** Clínica fictícia semeada com `cnotini` em um UUID gerado na execução. A mensagem enviada pelo CLI criou o job em `pending` com `attempts` 0 e `locked_by` nulo. O worker rodado como processo (`python -m app.jobs.worker`, laço `rodar()`) processou o job para `done`, `attempts` 1 e `locked_by` preenchido. Depois de processar, o worker ficou ocioso sem erro (stdout e stderr vazios) e encerrou ao ser parado, sem deixar job em `processing`. A limpeza com `cnotini` pelo UUID devolveu as contagens de `clinicas`, `mensagens` e `jobs` ao valor anterior.
-- **3.3 suíte completa.** `pytest tests/ -v`, `71 passed`.
+- **4.1 máquina de estados.** `app/core/estados.py`, grafo em [`decisions/0003-grafo-de-transicoes.md`](./decisions/0003-grafo-de-transicoes.md). Transições inválidas rejeitadas, incluindo laço no mesmo estado e estado desconhecido (`test_estados.py`, 30 testes). A aresta `idle -> encerrada` está fora do grafo, coerente com o ADR 0003.
+- **4.2 lock por conversa.** `app/core/conversas.py` (`conversa_travada`, `SELECT ... FOR UPDATE` que bloqueia, `lock_timeout` abaixo do limite de órfão do worker). Controles registrados: sem `FOR UPDATE`, sem `ON CONFLICT` e sem `lock_timeout` os testes correspondentes falham. Corrida de criação resulta em uma linha só.
+- **4.3 mensagens seguidas.** `test_mensagens_seguidas_serializam_sem_duplicar`: vários jobs da mesma conversa, vários workers, processamentos sem sobreposição e cada job uma vez só. Estável em 20 de 20 execuções. Controle: sem o lock da conversa os processamentos se sobrepõem. A ordem de chegada entre workers não é garantida pelo lock.
+- **4.4 escrita de clínica via `app_clinicas`.** `app/core/processamento.py` (`processar_mensagem`), por sessão `app_clinicas` com RLS e `app.tenant_id` do próprio job, ligada ao worker pelo ponto de injeção `processamento=` sem alterar `app/jobs/worker.py`. Casos cobertos com controle: tenant vem da coluna do job (payload ignorado), reprocessamento do mesmo job não duplica a conversa, e o mesmo contato em duas clínicas gera duas conversas separadas.
 
 ## Bloqueios e pendências
+
+- O default de produção do worker segue `processamento_vazio`. Ligar `processar_mensagem` como processamento padrão exige editar `app/jobs/worker.py`, fora do escopo das tarefas da etapa 4. A docstring de `app/jobs/worker.py` tem a nota "a lógica real entra a partir da etapa 4", que ficará desatualizada.
+- Proposta de nova redação do critério de mensagens seguidas em [`etapas.md`](./etapas.md), sem processamento simultâneo nem duplicidade e com a ordem de chegada registrada como não garantida, pendente de aprovação antes de aplicar.
 
 ## Links
 

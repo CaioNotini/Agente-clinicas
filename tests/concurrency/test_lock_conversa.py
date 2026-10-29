@@ -15,6 +15,7 @@ import uuid
 
 import pytest
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import OperationalError
 
 from app.config import MIGRATION_DATABASE_URL
 from app.core.conversas import conversa_travada
@@ -28,6 +29,9 @@ HOLD = 0.5
 
 CONTATO = "(00) 00000-0001"
 OUTRO_CONTATO = "(00) 00000-0002"
+
+# SQLSTATE do Postgres para lock_not_available (erro de lock_timeout)
+LOCK_NOT_AVAILABLE = "55P03"
 
 
 def _criar_clinica(tenant_id):
@@ -195,6 +199,90 @@ def test_tenants_diferentes_nao_bloqueiam(dois_tenants):
 
     assert not erros, f"erro nas threads: {erros}"
     assert eventos["b_lock"] < eventos["a_unlock"]
+
+
+def test_criacao_concorrente_nao_duplica(tenant):
+    """Duas transacoes criando a mesma conversa ao mesmo tempo geram uma linha so.
+
+    Aqui a conversa NAO e pre-criada: as duas threads disputam o buscar-ou-criar.
+    O ON CONFLICT (tenant_id, contato_telefone) DO NOTHING garante que a segunda
+    nao insere duplicata nem levanta erro de chave unica. Controle: removendo o
+    ON CONFLICT do INSERT em app/core/conversas.py, a segunda transacao falha por
+    violacao de chave unica e este teste acusa (erro na thread).
+    """
+    erros = []
+    # Barreira para as duas criacoes partirem juntas e de fato se sobreporem
+    barreira = threading.Barrier(2)
+
+    def criar():
+        barreira.wait(timeout=5)
+        with conversa_travada(tenant, CONTATO) as c:
+            _ = c.id
+            # segura um instante dentro do bloco para a segunda transacao chegar
+            # ao INSERT enquanto a primeira ainda nao commitou
+            time.sleep(0.05)
+
+    t1 = threading.Thread(target=_executar, args=(criar, erros))
+    t2 = threading.Thread(target=_executar, args=(criar, erros))
+    t1.start()
+    t2.start()
+    t1.join(timeout=10)
+    t2.join(timeout=10)
+
+    assert not t1.is_alive() and not t2.is_alive(), "thread travou (possivel deadlock)"
+    assert not erros, f"erro nas threads: {erros}"
+    assert _contar_conversas(tenant, CONTATO) == 1
+
+
+def test_lock_timeout_devolve_erro_sem_prender(tenant):
+    """Com o lock ocupado alem do lock_timeout, a segunda transacao erra e nao prende.
+
+    A primeira segura o lock por um tempo longo. A segunda entra com lock_timeout
+    curto: deve receber erro de lock_timeout e sair bem antes de a primeira liberar,
+    em vez de ficar presa esperando. Conversa pre-criada para isolar o FOR UPDATE.
+    """
+    _criar_conversa(tenant, CONTATO)
+    a_dentro = threading.Event()
+    resultado = {}
+    HOLD_LONGO = 2.0
+    TIMEOUT_CURTO_MS = 300
+
+    def primeira():
+        with conversa_travada(tenant, CONTATO):
+            a_dentro.set()
+            time.sleep(HOLD_LONGO)
+
+    def segunda():
+        assert a_dentro.wait(timeout=5)
+        inicio = time.perf_counter()
+        try:
+            with conversa_travada(tenant, CONTATO, lock_timeout_ms=TIMEOUT_CURTO_MS):
+                resultado["travou"] = True
+        except OperationalError as erro:
+            resultado["erro"] = erro
+            resultado["espera"] = time.perf_counter() - inicio
+
+    ta = threading.Thread(target=primeira)
+    tb = threading.Thread(target=segunda)
+    ta.start()
+    tb.start()
+    ta.join(timeout=10)
+    tb.join(timeout=10)
+
+    assert not ta.is_alive() and not tb.is_alive(), "thread travou (possivel deadlock)"
+    assert "travou" not in resultado, "a segunda nao deveria ter obtido o lock"
+    assert "erro" in resultado, "esperado erro de lock_timeout na segunda transacao"
+    # Distingue lock timeout de outro OperationalError (ex.: statement_timeout,
+    # queda de conexao): exige o SQLSTATE 55P03 (lock_not_available) ou, como
+    # alternativa, a mensagem de lock timeout do Postgres.
+    erro = resultado["erro"]
+    pgcode = getattr(getattr(erro, "orig", None), "pgcode", None)
+    assert pgcode == LOCK_NOT_AVAILABLE or "lock timeout" in str(erro).lower(), (
+        f"esperado lock timeout (SQLSTATE {LOCK_NOT_AVAILABLE}), "
+        f"veio pgcode={pgcode!r}: {erro}"
+    )
+    # A segunda errou perto do lock_timeout, nao ficou presa ate a primeira liberar
+    assert resultado["espera"] < HOLD_LONGO * 0.8
 
 
 def test_busca_ou_cria_idempotente(tenant):

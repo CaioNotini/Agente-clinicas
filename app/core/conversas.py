@@ -24,6 +24,15 @@ from sqlalchemy import text
 from app.core.estados import ESTADO_INICIAL
 from app.db.database import SessionLocal
 
+# Limite de espera pelo lock da conversa, em milissegundos. Uma segunda mensagem
+# da mesma conversa espera a primeira liberar (FOR UPDATE que bloqueia), mas nao
+# para sempre: passado este tempo a transacao recebe erro de lock_timeout e sai,
+# em vez de prender a thread do worker. O valor fica bem abaixo do limite de
+# orfao do worker (LIMITE_LOCK_SEGUNDOS = 300 s em app/jobs/worker.py): assim um
+# esperante erra muito antes de o job em processing ser considerado orfao e
+# recapturado, o que evitaria dois processamentos simultaneos da mesma conversa.
+LOCK_TIMEOUT_MS = 5000
+
 
 @dataclass(frozen=True)
 class ConversaTravada:
@@ -35,7 +44,12 @@ class ConversaTravada:
 
 
 @contextmanager
-def conversa_travada(tenant_id, contato_telefone, session_factory=SessionLocal):
+def conversa_travada(
+    tenant_id,
+    contato_telefone,
+    session_factory=SessionLocal,
+    lock_timeout_ms=LOCK_TIMEOUT_MS,
+):
     """Trava a linha da conversa (tenant_id, contato_telefone) ate o fim do bloco.
 
     Abre uma transacao app_clinicas, define app.tenant_id, garante que a conversa
@@ -53,6 +67,14 @@ def conversa_travada(tenant_id, contato_telefone, session_factory=SessionLocal):
         session.execute(
             text("SELECT set_config('app.tenant_id', :t, true)"),
             {"t": tenant_id},
+        )
+
+        # Limite de espera pelo lock, so para esta transacao (is_local=true). Se o
+        # FOR UPDATE abaixo esperar mais que isto, o Postgres cancela com erro de
+        # lock_timeout, a transacao faz rollback e a thread e liberada.
+        session.execute(
+            text("SELECT set_config('lock_timeout', :ms, true)"),
+            {"ms": str(lock_timeout_ms)},
         )
 
         # Buscar-ou-criar sem corrida: se outra transacao ja criou a conversa, o
