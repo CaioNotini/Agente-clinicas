@@ -69,14 +69,15 @@ jobs:
           psql -v worker_user="$WORKER_USER" -v worker_pw="$WORKER_PW" -h localhost -p 5434 -U "${{ secrets.DB_USER }}" -d agente_estudo -f /tmp/senha_worker.sql
           rm /tmp/senha_worker.sql
 
-      - name: Diagnóstico dos secrets do worker (temporário)
+      - name: Definir senha de app_clinicas
         env:
-          U: ${{ secrets.WORKER_DB_USER }}
-          P: ${{ secrets.WORKER_DB_PASSWORD }}
+          PGPASSWORD: ${{ secrets.DB_PASSWORD }}
+          APP_USER: ${{ secrets.APP_DB_USER }}
+          APP_PW: ${{ secrets.APP_DB_PASSWORD }}
         run: |
-          echo "tamanho do usuario: ${#U}"
-          echo "tamanho da senha: ${#P}"
-          case "$U" in *$'\n'*) echo "usuario tem quebra de linha";; esac
+          printf "ALTER ROLE :\"app_user\" PASSWORD :'app_pw';\n" > /tmp/senha.sql
+          psql -v ON_ERROR_STOP=1 -v app_user="$APP_USER" -v app_pw="$APP_PW" -h localhost -p 5434 -U "${{ secrets.DB_USER }}" -d agente_estudo -f /tmp/senha.sql
+          rm /tmp/senha.sql
 
       # Testes com coverage (usa DB_* e APP_DB_* do env do job)
       - name: Run pytest with coverage
