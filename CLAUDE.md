@@ -51,7 +51,7 @@ Para cada tarefa, nesta ordem:
 18. Banco: a aplicação usa somente `app_clinicas`. Nunca usar `cnotini` (superusuário) nem `worker_jobs` (BYPASSRLS) em código de aplicação. Ver [ADR 0002](docs/decisions/0002-contas-de-banco.md).
 19. Testes de isolamento usam somente `app_clinicas` para verificar o RLS. Dados de teste podem ser criados com `cnotini`, mas a verificação não.
 20. Toda tabela nova com `tenant_id` recebe a policy `isolamento_tenant`, entra em `TABELAS_TENANT` e é coberta pelos testes de isolamento antes de ser considerada concluída.
-21. Não criar, alterar ou remover roles, policies, grants nem o RLS sem pedido explícito. Essas mudanças exigem ADR.
+21. Não criar, alterar ou remover roles, policies, grants nem o RLS sem pedido explícito. Essas mudanças exigem ADR. Exceção: a policy `isolamento_tenant` em tabela nova, prevista na regra 20, já está autorizada e não exige ADR novo.
 
 ## Testes
 

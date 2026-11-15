@@ -4,7 +4,7 @@ Entrada: docs/status.md
 Relaciona-se com: ../arquitetura.md (D-08, secoes 7, 8.1 e 8.4), ../etapas.md (etapa 4), ../../app/core/estados.py, ../../tests/concurrency/test_estados.py
 ```
 
-# 0003 — Grafo de transicoes entre estados da conversa
+# 0003: Grafo de transicoes entre estados da conversa
 
 ## Contexto
 

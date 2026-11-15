@@ -66,6 +66,15 @@ Critérios de pronto de cada etapa ficam em [`etapas.md`](./etapas.md). Esta tab
 - **O que falta validar.** Com o banco do Docker ligado: `alembic upgrade head`, o ciclo de sobe, desce e sobe da migration `1bc74598f301`, e `pytest tests/ -v` completo, com 113 testes esperados. A alteração do CI só é validada quando a pipeline rodar no GitHub.
 - Os grants de `worker_jobs` no banco são mais amplos que o uso feito pelo código. A decisão de 2026-11-15 foi documentar os grants reais no [ADR 0002](./decisions/0002-contas-de-banco.md), sem alterar o banco.
 - Os testes de `tests/concurrency/test_estados.py` são unitários e não tocam no banco. Ficaram em `tests/concurrency/` porque a etapa 4 só lista esse diretório em [`etapas.md`](./etapas.md). A decisão de movê-los para `tests/unit/` está pendente.
+- **Desvio conhecido na ordem das etapas.** As etapas 1 a 4 avançaram com a etapa 0 ainda aberta, contra a regra de dependência de [`etapas.md`](./etapas.md). A etapa 0 segue pendente do conteúdo de [`pergs_bloqueadas.md`](./fake_clinic/pergs_bloqueadas.md), a cargo do Caio.
+- **Critérios de pronto aprovados.** Em 2026-11-15 o Caio aprovou os critérios de pronto de [`etapas.md`](./etapas.md) como estão, e o aviso de rascunho foi removido.
+- **Questões que bloqueiam a especificação da etapa 5.** Q-20 a Q-24, na seção 13 de [`arquitetura.md`](./arquitetura.md).
+- **Ambiguidades de documentação ainda sem decisão.**
+  - Q-03 pede resposta na etapa 4 e na etapa 15, mas o ambiente local não tem pooler, então a parte da etapa 4 não tem como ser respondida.
+  - [`FAQ.md`](./fake_clinic/FAQ.md) cita [`pergs_bloqueadas.md`](./fake_clinic/pergs_bloqueadas.md) como fonte de duas perguntas administrativas marcadas como bloqueado, e esse arquivo só tem perguntas clínicas e de urgência.
+  - [`principios.md`](./principios.md) cita "D10" na verificação do princípio 6, e não existe decisão com esse identificador ligada ao tema.
+  - [`estudo.md`](./estudo.md), seção 4, cita um "endpoint de chat de teste" que nenhuma etapa de [`etapas.md`](./etapas.md) prevê.
+  - A seção 7 de [`arquitetura.md`](./arquitetura.md) diz que `log_auditoria` guarda categoria e texto original, e a tabela tem as colunas `acao`, `descricao` e `dados`.
 
 ## Links
 

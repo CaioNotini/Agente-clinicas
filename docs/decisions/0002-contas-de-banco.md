@@ -1,10 +1,10 @@
 ```
 Papel: registra a separação de contas de banco por papel (aplicação, migrations e worker).
 Entrada: docs/status.md
-Relaciona-se com: ../arquitetura.md (seção 5, quem usa qual credencial), ../estudo.md (etapa 2), ../../app/config.py, ../../tests/isolation/
+Relaciona-se com: ../arquitetura.md (seção 5, quem usa qual credencial), ../etapas.md (etapa 2), ../../app/config.py, ../../tests/isolation/
 ```
 
-# 0002 — Contas de banco
+# 0002: Contas de banco
 
 ## Revisão
 

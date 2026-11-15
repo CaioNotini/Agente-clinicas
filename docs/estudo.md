@@ -33,7 +33,7 @@ A diferença entre estudo e MVP está em três pontos: canal (CLI no estudo, Wha
 
 | Fator                | Situação                                                                          |
 | -------------------- | --------------------------------------------------------------------------------- |
-| Desenvolvimento      | 1 pessoa, part-time, cursando duas graduações                                     |
+| Desenvolvimento      | 2 desenvolvedores part-time. Um deles também está cursando duas graduações        |
 | Orçamento            | Próximo de zero no estudo. Infraestrutura do MVP segue o teto da arquitetura v2.1 |
 | Dado tratado         | Somente fictício, em todo o estudo, testes e demo                                 |
 | Objetivo             | Projeto de estudo para chegar a um MVP em produção                                |
@@ -46,7 +46,7 @@ A diferença entre estudo e MVP está em três pontos: canal (CLI no estudo, Wha
 
 1. **Mesmo vocabulário do MVP.** Tabelas, campos, estados, tipos de job, categorias de intenção e ferramentas têm os mesmos nomes. Renomear depois é a migração mais chata e menos útil.
 2. **Tudo que muda entre estudo e MVP fica atrás de uma interface.** Canal, LLM, embeddings, agenda, lembretes e notificação. A migração troca implementações, não o miolo.
-3. **Regra de negócio em Python comum e testado.** Conflito de horário, janela de cancelamento e agendamento duplicado nunca vivem no prompt. A IA interpreta e redige; o código decide.
+3. **Regra de negócio em Python comum e testado.** Conflito de horário, janela de cancelamento e agendamento duplicado nunca vivem no prompt. A IA interpreta e redige. O código decide.
 4. **Estado explícito no banco, não no prompt.**
 5. **`tenant_id` e RLS desde o primeiro dia**, mesmo com uma clínica só. É o que permite passar para multicliente sem mexer no schema.
 6. **Configuração por variável de ambiente.** Nenhuma chave no código nem no repositório.
@@ -66,7 +66,7 @@ A diferença entre estudo e MVP está em três pontos: canal (CLI no estudo, Wha
 | Handoff com `human_mode` e takeover                                 | 8.4                       | Etapa 13                                                  | —                                 |
 | Notificação de handoff no WhatsApp pessoal                          | 8.4                       | Etapa 13, com canal simulado                              | Template real aprovado (etapa 20) |
 | Painel de monitoramento com login                                   | 5, D-22                   | Etapa 14                                                  | —                                 |
-| Tabelas `handoffs`, `log_auditoria`, `consents`, `privacy_requests` | 7                         | Schema na etapa 2; `consents` e `privacy_requests` vazias | Uso real no piloto                |
+| Tabelas `handoffs`, `log_auditoria`, `consents`, `privacy_requests` | 7                         | Schema na etapa 2. `consents` e `privacy_requests` vazias | Uso real no piloto                |
 | Métricas                                                            | 12                        | Log estruturado e script de relatório                     | Painel mostra as métricas         |
 | WhatsApp Cloud API e templates                                      | 4                         | Fora (canal CLI)                                          | Etapas 17 e 20                    |
 | Bedrock para LLM                                                    | D-13                      | Fora (API direta)                                         | Etapa 16                          |
