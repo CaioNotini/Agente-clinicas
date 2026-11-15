@@ -80,13 +80,13 @@ Relaciona-se com: ../estudo.md (etapas 0, 8 e 10), ../arquitetura.md (seção 6-
 
 - Resposta: Essa pergunta é respondida pela recepção.
 - Categoria: `bloqueado`
-- Fonte: [./perguntas_bloqueadas.md](./perguntas_bloqueadas.md)
+- Fonte: [./pergs_bloqueadas.md](./pergs_bloqueadas.md)
 
 ### Vocês fazem reembolso do convênio?
 
 - Resposta: Essa pergunta é respondida pela recepção.
 - Categoria: `bloqueado`
-- Fonte: [./perguntas_bloqueadas.md](./perguntas_bloqueadas.md)
+- Fonte: [./pergs_bloqueadas.md](./pergs_bloqueadas.md)
 
 ### Nota final
 

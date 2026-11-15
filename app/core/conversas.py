@@ -4,7 +4,8 @@ Impede que duas mensagens da mesma conversa, identificada por
 (tenant_id, contato_telefone), sejam processadas ao mesmo tempo. A segunda
 transacao que tentar travar a mesma linha espera ate a primeira liberar
 (FOR UPDATE, sem SKIP nem NOWAIT), entao as mensagens sao processadas em serie,
-sem perda e sem fora de ordem.
+sem sobreposicao. O lock nao garante a ordem de chegada entre workers (ver
+docs/status.md, evidencia 4.3).
 
 Conta de banco: a conversa e dado especifico de clinica, e a role worker_jobs
 so tem SELECT em conversas (ver docs/decisions/0002-contas-de-banco.md). Por

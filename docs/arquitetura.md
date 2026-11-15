@@ -126,7 +126,7 @@ Decisões com status **Travada** não são revisitadas sem nova versão deste do
 | Processo                        | Credencial de banco                    | Acesso à AWS                                         |
 | ------------------------------- | -------------------------------------- | ---------------------------------------------------- |
 | API e painel (requisições)      | Role da aplicação, sujeita a RLS       | Bedrock e Secrets Manager, via credencial IAM mínima |
-| Worker e varredura de lembretes | Role `scheduler_service` com BYPASSRLS | Igual                                                |
+| Worker e varredura de lembretes | Role `worker_jobs` com BYPASSRLS       | Igual                                                |
 | Migrations                      | Role de migração, usada só no deploy   | Não usa                                              |
 
 ## 6. Estrutura do código
@@ -184,7 +184,7 @@ Um banco, `tenant_id` em toda tabela. Nomes idênticos entre estudo e MVP.
 | `regras_agendamento`                                                      | 2                    | Antecedência mínima e máxima, janela de cancelamento                                           |
 | `pacientes_contatos`                                                      | 2                    | Nome e telefone, sem prontuário                                                                |
 | `conversas`                                                               | 2                    | `estado_conversa`, `human_mode`, `contato_telefone`                                            |
-| `mensagens`                                                               | 2                    | `mensagens.id` com UNIQUE                                                                      |
+| `mensagens`                                                               | 2                    | `mensagens.id` como chave primária                                                             |
 | `jobs`                                                                    | 3                    | `type`, `payload`, `status`, `run_at`, `attempts`, `locked_at`, `locked_by`, `last_error`      |
 | `agendamentos`                                                            | 5                    | Profissional, serviço, data e hora, status                                                     |
 | `handoffs`                                                                | 2 (schema) e 5 (uso) | Conversa, motivo, notificação enviada, quem assumiu, início e devolução ao bot                 |
@@ -258,7 +258,7 @@ Fluxo:
 ```
 Agendamento confirmado → aplica a regra de antecedência e cria registros em lembretes
 
-[varredura, a cada 15 min, role scheduler_service]
+[varredura, a cada 15 min, role worker_jobs]
  ↓
 ReminderService.buscar_pendentes() → lembretes com enviar_em <= agora e status 'pendente'
  ↓

@@ -50,7 +50,6 @@ A diferença entre estudo e MVP está em três pontos: canal (CLI no estudo, Wha
 4. **Estado explícito no banco, não no prompt.**
 5. **`tenant_id` e RLS desde o primeiro dia**, mesmo com uma clínica só. É o que permite passar para multicliente sem mexer no schema.
 6. **Configuração por variável de ambiente.** Nenhuma chave no código nem no repositório.
-7. **O núcleo é escrito à mão.** As etapas 3 a 5 são o miolo do aprendizado de Python. Assistentes, inclusive o Claude Code, servem para revisar e sugerir testes, não para gerar o núcleo.
 
 ## 3. Escopo: o que entra no estudo, o que entra só no MVP
 
@@ -81,20 +80,20 @@ A diferença entre estudo e MVP está em três pontos: canal (CLI no estudo, Wha
 
 Comparação reduzida entre o estudo e o MVP. Detalhes de cada camada, incluindo o ponto de troca na migração, estão em [arquitetura.md, seção 4](./arquitetura.md#4-stack).
 
-| Camada                                               | No estudo                                                                        | No MVP                                         |
-| ----------------------------------------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------- |
-| [Backend](./arquitetura.md#4-stack)                  | Python + FastAPI (`/health` e endpoint de chat de teste)                         | Python + FastAPI                               |
-| [Banco](./arquitetura.md#4-stack)                    | PostgreSQL + pgvector em Docker Compose, RLS ativo                               | Supabase (Postgres + pgvector + RLS)           |
-| [Fila](./arquitetura.md#4-stack)                     | Tabela `jobs` + worker com `SKIP LOCKED`                                         | Igual                                          |
-| [IA](./arquitetura.md#4-stack)                       | Claude Haiku via API direta da Anthropic (Sonnet só para comparação na etapa 10) | Claude Haiku via Bedrock                       |
-| [Embeddings](./arquitetura.md#4-stack)               | Cohere Embed Multilingual v3 via Bedrock                                         | Igual                                          |
-| [Canal](./arquitetura.md#4-stack)                    | CLI                                                                              | WhatsApp Cloud API                             |
-| [Painel](./arquitetura.md#4-stack)                   | Painel mínimo na etapa 14, na tecnologia definida em Q-17                        | Painel de monitoramento para as clínicas       |
-| [Autenticação do painel](./arquitetura.md#4-stack)   | Igual ao MVP (tabela `usuarios_painel`)                                          | A definir (Q-17)                               |
-| [Execução](./arquitetura.md#4-stack)                 | Docker Compose na máquina local                                                  | Container Docker na Lightsail, instância única |
-| [Segredos](./arquitetura.md#4-stack)                 | Arquivo `.env` fora do repositório                                               | AWS Secrets Manager                            |
-| [Observabilidade](./arquitetura.md#4-stack)          | Log estruturado no Postgres                                                      | Métricas da Lightsail + log estruturado        |
-| [Testes](./arquitetura.md#4-stack)                   | pytest, CI, isolamento entre tenants                                             | Igual                                          |
+| Camada                                             | No estudo                                                                        | No MVP                                         |
+| -------------------------------------------------- | -------------------------------------------------------------------------------- | ---------------------------------------------- |
+| [Backend](./arquitetura.md#4-stack)                | Python + FastAPI (`/health` e endpoint de chat de teste)                         | Python + FastAPI                               |
+| [Banco](./arquitetura.md#4-stack)                  | PostgreSQL + pgvector em Docker Compose, RLS ativo                               | Supabase (Postgres + pgvector + RLS)           |
+| [Fila](./arquitetura.md#4-stack)                   | Tabela `jobs` + worker com `SKIP LOCKED`                                         | Igual                                          |
+| [IA](./arquitetura.md#4-stack)                     | Claude Haiku via API direta da Anthropic (Sonnet só para comparação na etapa 10) | Claude Haiku via Bedrock                       |
+| [Embeddings](./arquitetura.md#4-stack)             | Cohere Embed Multilingual v3 via Bedrock                                         | Igual                                          |
+| [Canal](./arquitetura.md#4-stack)                  | CLI                                                                              | WhatsApp Cloud API                             |
+| [Painel](./arquitetura.md#4-stack)                 | Painel mínimo na etapa 14, na tecnologia definida em Q-17                        | Painel de monitoramento para as clínicas       |
+| [Autenticação do painel](./arquitetura.md#4-stack) | Igual ao MVP (tabela `usuarios_painel`)                                          | A definir (Q-17)                               |
+| [Execução](./arquitetura.md#4-stack)               | Docker Compose na máquina local                                                  | Container Docker na Lightsail, instância única |
+| [Segredos](./arquitetura.md#4-stack)               | Arquivo `.env` fora do repositório                                               | AWS Secrets Manager                            |
+| [Observabilidade](./arquitetura.md#4-stack)        | Log estruturado no Postgres                                                      | Métricas da Lightsail + log estruturado        |
+| [Testes](./arquitetura.md#4-stack)                 | pytest, CI, isolamento entre tenants                                             | Igual                                          |
 
 ### Fluxo de uma mensagem
 
@@ -130,19 +129,19 @@ Fonte única das etapas 0 a 21, suas entregas e dependências: [`etapas.md`](./e
 
 Estados da conversa, status de job, tipos de job, categorias de intenção e as ferramentas expostas ao modelo são valores fixos, definidos em [arquitetura.md, seção 7](./arquitetura.md#7-modelo-de-dados).
 
-| Elemento                       | Valor a preservar                                                                       | Seção da v2.1 |
-| ------------------------------ | --------------------------------------------------------------------------------------- | ------------- |
-| Nomes de tabelas e campos      | Os da seção 5                                                                           | 7             |
-| `human_mode`                   | Campo em `conversas`, mesmo sem painel no estudo                                        | 8.4           |
-| Threshold inicial de confiança | 0,7, a calibrar na etapa 10                                                             | 8.3           |
-| Mensagens fixas                | Para `clinico_bloqueado` e `urgencia`, nunca geradas                                    | 8.3           |
-| Duas travas                    | `SKIP LOCKED` no job e `FOR UPDATE` na conversa                                         | 8.1           |
-| Deduplicação                   | UNIQUE no `message_id`                                                                  | 8.1           |
-| Isolamento                     | `tenant_id` em toda tabela, RLS e teste de isolamento                                   | D-03, D-04    |
-| Filtro de conteúdo             | `categoria` em `conhecimento_clinica`, filtrado antes da busca                          | 8.3           |
-| Regras de lembrete             | T-7 e T-1, consultas com menos de 7 dias, remarcação                                    | 8.2           |
-| Modelo de embeddings           | Cohere Embed Multilingual v3 via Bedrock, dimensão 1024                                 | D-14          |
-| Auditoria                      | `log_auditoria` para toda mensagem bloqueada ou de urgência                             | 8.3           |
+| Elemento                       | Valor a preservar                                              | Seção da v2.1 |
+| ------------------------------ | -------------------------------------------------------------- | ------------- |
+| Nomes de tabelas e campos      | Os da seção 5                                                  | 7             |
+| `human_mode`                   | Campo em `conversas`, mesmo sem painel no estudo               | 8.4           |
+| Threshold inicial de confiança | 0,7, a calibrar na etapa 10                                    | 8.3           |
+| Mensagens fixas                | Para `clinico_bloqueado` e `urgencia`, nunca geradas           | 8.3           |
+| Duas travas                    | `SKIP LOCKED` no job e `FOR UPDATE` na conversa                | 8.1           |
+| Deduplicação                   | Chave primária em `mensagens.id`                               | 8.1           |
+| Isolamento                     | `tenant_id` em toda tabela, RLS e teste de isolamento          | D-03, D-04    |
+| Filtro de conteúdo             | `categoria` em `conhecimento_clinica`, filtrado antes da busca | 8.3           |
+| Regras de lembrete             | T-7 e T-1, consultas com menos de 7 dias, remarcação           | 8.2           |
+| Modelo de embeddings           | Cohere Embed Multilingual v3 via Bedrock, dimensão 1024        | D-14          |
+| Auditoria                      | `log_auditoria` para toda mensagem bloqueada ou de urgência    | 8.3           |
 
 ## 8. Migração: como as etapas 15 a 21 levam ao MVP
 
@@ -191,4 +190,3 @@ A migração não é uma reescrita. Cada etapa troca uma implementação atrás 
 - **Dados e segredos.** Só dado fictício. `.env` no `.gitignore`, nenhuma chave no repositório.
 - **Custo.** Definir alerta de gasto (AWS Budgets) na conta de desenvolvimento e teto na conta da API da Anthropic. Rodar a suíte completa de avaliação só quando necessário.
 - **Conta AWS.** Conta dedicada, com e-mail operacional e MFA no usuário root. Uso diário por usuário IAM de permissão mínima.
-- **Aprendizado.** Se o núcleo (etapas 3 a 5) for gerado por assistente em vez de escrito, o projeto vira portfólio sem virar aprendizado.

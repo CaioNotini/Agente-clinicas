@@ -1,15 +1,16 @@
 """Processamento de mensagem recebida: lock da conversa por sessao app_clinicas (etapa 4.4).
 
 O worker (app/jobs/worker.py) consome a fila como worker_jobs (LOGIN e BYPASSRLS),
-conta que so tem acesso a tabela jobs (ver docs/decisions/0002-contas-de-banco.md).
+conta que o codigo do worker usa so para a tabela jobs e que nao tem INSERT nem
+UPDATE em conversas (grants completos em docs/decisions/0002-contas-de-banco.md).
 A escrita especifica de clinica desta etapa, buscar-ou-criar e travar a conversa,
 NAO pode usar essa conexao: ela roda numa sessao app_clinicas propria, sujeita ao
 RLS, com app.tenant_id definido na propria transacao (via conversa_travada). O
 filtro por tenant_id dentro do lock e a segunda barreira de isolamento (ADR 0002).
 
 Esta funcao e ligada ao worker pelo ponto de extensao `processamento=` de
-processar_um/rodar, sem alterar o worker. A conexao worker_jobs recebida nao e
-usada para a escrita de clinica.
+processar_um/rodar, e e o processamento padrao de rodar() em app/jobs/worker.py.
+A conexao worker_jobs recebida nao e usada para a escrita de clinica.
 
 Escopo da etapa 4: o processamento so garante a conversa e segura o lock enquanto
 o job e processado, serializando mensagens seguidas da mesma conversa. A transicao

@@ -102,7 +102,7 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
 - **Tarefas:**
   - 2.1 extensão pgvector, com imagem e migration.
   - 2.2 tabelas faltantes, em duas migrations.
-  - 2.3 role `scheduler_service`, com BYPASSRLS e sem login.
+  - 2.3 role do worker, com BYPASSRLS. Criada como `scheduler_service`, sem login, e substituída por `worker_jobs`, com login, conforme [ADR 0002](./decisions/0002-contas-de-banco.md).
   - 2.4 RLS, FORCE e policy `isolamento_tenant` em todas as tabelas com `tenant_id`.
   - 2.5 teste de isolamento com a conta da aplicação.
   - 2.6 separação de contas por papel, com a role `app_clinicas` criada por migration e a senha definida no CI a partir de secret.
@@ -314,7 +314,7 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
 - **Tarefas:**
   - 15.1 projeto Supabase no plano Free para testes.
   - 15.2 aplicação das migrations.
-  - 15.3 validação de BYPASSRLS para `scheduler_service` (Q-02).
+  - 15.3 validação de BYPASSRLS para `worker_jobs` (Q-02).
   - 15.4 validação do pooler em modo transação com os locks (Q-03).
   - 15.5 teste de restauração de backup.
 - **Critério de pronto:** as migrations sobem no Supabase, a suíte de isolamento passa contra ele, os testes de lock passam e a restauração é registrada.
