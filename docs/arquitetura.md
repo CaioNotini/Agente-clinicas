@@ -1,7 +1,7 @@
 ```
 Papel: Fonte única das decisões técnicas (D-xx), modelo de dados e questões em aberto (Q-xx).
 Entrada: docs/status.md
-Relaciona-se com: estudo.md, etapas.md, decisions/0001-alembic.md, status.md
+Relaciona-se com: estudo.md, etapas.md, decisions/0001-alembic.md, decisions/0002-contas-de-banco.md, status.md
 ```
 
 # Arquitetura do MVP: agente de agendamento para clínicas via WhatsApp
@@ -16,7 +16,7 @@ O produto é um agente de IA que atende clínicas pelo WhatsApp. Ele agenda, rem
 
 A clínica acompanha tudo por um **painel de monitoramento**: vê a agenda, o histórico das conversas e as métricas, e assume uma conversa quando o agente encaminha o caso para a recepção. Quando há handoff, a recepção é avisada no WhatsApp pessoal de quem está de plantão, com link direto para a conversa no painel.
 
-A arquitetura é um backend Python (FastAPI) com um worker que processa mensagens a partir de uma fila no PostgreSQL. Cada mensagem é classificada, passa por uma máquina de estados explícita com lock por conversa, e só então aciona o modelo de IA (Claude Haiku) por meio de ferramentas determinísticas. Regras de negócio ficam em código comum e testado; a IA interpreta e redige. Um único banco PostgreSQL (Supabase no MVP) atende todas as clínicas, com `tenant_id` em toda tabela e Row Level Security.
+A arquitetura é um backend Python (FastAPI) com um worker que processa mensagens a partir de uma fila no PostgreSQL. Cada mensagem é classificada, passa por uma máquina de estados explícita com lock por conversa, e só então aciona o modelo de IA (Claude Haiku) por meio de ferramentas determinísticas. Regras de negócio ficam em código comum e testado. A IA interpreta e redige. Um único banco PostgreSQL (Supabase no MVP) atende todas as clínicas, com `tenant_id` em toda tabela e Row Level Security.
 
 O MVP é construído a partir do **projeto de estudo**. Os módulos, interfaces, tabelas e nomes são os mesmos nos dois. A migração troca implementações atrás das interfaces e não reescreve o núcleo. O plano de estudo é a base do MVP: a mesma sequência de etapas leva do estudo ao produto.
 
@@ -29,7 +29,7 @@ O MVP é construído a partir do **projeto de estudo**. Os módulos, interfaces,
 | Dado tratado                | Dado de saúde, sensível pela LGPD. Estudo, testes e demo usam apenas dado fictício |
 | Cronograma                  | Tratado por ordem de dependência, sem prazo fixo                                   |
 | Valores comerciais          | Mensalidade e preços serão definidos depois do desenvolvimento                     |
-| Metas de sucesso            | Não definidas agora; ficam como questão em aberto (Q-15)                           |
+| Metas de sucesso            | Não definidas agora. Ficam como questão em aberto (Q-15)                           |
 
 Princípio que guia todas as decisões: **simples o bastante para uma pessoa operar, desenhado para não precisar de reescrita ao crescer para multicliente.**
 
@@ -47,16 +47,16 @@ Decisões com status **Travada** não são revisitadas sem nova versão deste do
 | D-06 | Fila de jobs em tabela PostgreSQL com `SKIP LOCKED` e deduplicação por `mensagens.id`                                                                                                                                                                           | Travada                                       | Celery + Redis: mais infraestrutura. Gatilho de migração: segunda instância da aplicação                                                                                                                       |
 | D-07 | Lock por conversa com `SELECT ... FOR UPDATE`                                                                                                                                                                                                                   | Travada                                       | Fila FIFO por conversa: mais complexa, sem ganho no volume de piloto                                                                                                                                           |
 | D-08 | Estado explícito em `conversas.estado_conversa`, com 5 estados                                                                                                                                                                                                  | Travada                                       | Estado inferido pelo LLM a cada mensagem: custo de tokens e ambiguidade                                                                                                                                        |
-| D-09 | Classificação em categoria fechada + score de confiança; abaixo de 0,7 vira `ambiguo`                                                                                                                                                                           | Travada (threshold a calibrar, Q-06)          | Só rótulo sem confiança: não trata casos de fronteira                                                                                                                                                          |
+| D-09 | Classificação em categoria fechada + score de confiança. Abaixo de 0,7 vira `ambiguo`                                                                                                                                                                           | Travada (threshold a calibrar, Q-06)          | Só rótulo sem confiança: não trata casos de fronteira                                                                                                                                                          |
 | D-10 | `clinico_bloqueado` e `urgencia` respondem com mensagem fixa aprovada, nunca gerada                                                                                                                                                                             | Travada                                       | Resposta gerada pelo LLM: risco de recusa parcialmente clínica e de variação não auditável                                                                                                                     |
 | D-11 | Ferramentas determinísticas. A lista de ferramentas é a barreira de escopo                                                                                                                                                                                      | Travada                                       | Modelo livre com regras no prompt: não é verificável                                                                                                                                                           |
 | D-12 | Orquestração própria sobre a API do modelo, sem LangChain                                                                                                                                                                                                       | Travada                                       | LangChain/LangGraph: abstrações difíceis de depurar, dependências pesadas e quebras entre versões                                                                                                              |
-| D-13 | Claude Haiku. No estudo via API direta da Anthropic; no MVP via AWS Bedrock, com retenção zero travada por conta/projeto                                                                                                                                        | Travada                                       | API direta no MVP: retenção depende de contrato empresarial. Modelos da linha Mythos/Fable exigem compartilhamento de dados no Bedrock, portanto não são usados. Sonnet só para comparação pontual na etapa 10 |
+| D-13 | Claude Haiku. No estudo via API direta da Anthropic. No MVP via AWS Bedrock, com retenção zero travada por conta/projeto                                                                                                                                        | Travada                                       | API direta no MVP: retenção depende de contrato empresarial. Modelos da linha Mythos/Fable exigem compartilhamento de dados no Bedrock, portanto não são usados. Sonnet só para comparação pontual na etapa 10 |
 | D-14 | Embeddings: Cohere Embed Multilingual v3 via AWS Bedrock, nos dois ambientes, dimensão 1024                                                                                                                                                                     | Travada (validações na etapa 8, Q-01)         | Modelo local via Ollama: indisponível no Bedrock, o que obrigaria reindexação na migração. Titan Text Embeddings V2: alternativa se a validação falhar                                                         |
 | D-15 | WhatsApp Cloud API direto pela Meta, sem BSP                                                                                                                                                                                                                    | Travada                                       | BSP (Twilio, 360dialog, Zenvia): mensalidade de plataforma                                                                                                                                                     |
 | D-16 | Canal CLI no estudo, atrás da interface `Channel`                                                                                                                                                                                                               | Travada                                       | —                                                                                                                                                                                                              |
-| D-17 | Agendamento atrás de `AgendaProvider`. `AgendaPropria` é o padrão; adaptadores externos só sob demanda de cliente real                                                                                                                                          | Travada                                       | Integração com Google Calendar, iClinic ou Feegow desde o início: esforço alto sem cliente pedindo                                                                                                             |
-| D-18 | Lembretes em T-7 dias (pede confirmação e oferece remarcação) e T-1 dia (confirmação curta), com regras para consultas marcadas com menos de 7 dias (seção 8.2). Tabela `lembretes` é a fonte da verdade; varredura a cada 15 minutos cria jobs `SEND_REMINDER` | Travada                                       | Job por lembrete no APScheduler: perde agendamentos se a aplicação reiniciar                                                                                                                                   |
+| D-17 | Agendamento atrás de `AgendaProvider`. `AgendaPropria` é o padrão. Adaptadores externos só sob demanda de cliente real                                                                                                                                          | Travada                                       | Integração com Google Calendar, iClinic ou Feegow desde o início: esforço alto sem cliente pedindo                                                                                                             |
+| D-18 | Lembretes em T-7 dias (pede confirmação e oferece remarcação) e T-1 dia (confirmação curta), com regras para consultas marcadas com menos de 7 dias (seção 8.2). Tabela `lembretes` é a fonte da verdade. Varredura a cada 15 minutos cria jobs `SEND_REMINDER` | Travada                                       | Job por lembrete no APScheduler: perde agendamentos se a aplicação reiniciar                                                                                                                                   |
 | D-19 | Hospedagem da aplicação na Lightsail, instância única, container Docker                                                                                                                                                                                         | Travada                                       | Elastic Beanstalk e EC2 com Auto Scaling: mais peças AWS para um piloto de instância única                                                                                                                     |
 | D-20 | Observabilidade: métricas da Lightsail (infra) e log estruturado no Postgres (produto e agente)                                                                                                                                                                 | Travada                                       | Stack dedicada de observabilidade: mais um serviço para manter                                                                                                                                                 |
 | D-21 | Supabase Free na demo, Pro no piloto com dado real                                                                                                                                                                                                              | Travada                                       | Free no piloto: sem backup diário e com pausa por inatividade                                                                                                                                                  |
@@ -123,11 +123,13 @@ Decisões com status **Travada** não são revisitadas sem nova versão deste do
 
 **Quem usa qual credencial.**
 
-| Processo                        | Credencial de banco                    | Acesso à AWS                                         |
-| ------------------------------- | -------------------------------------- | ---------------------------------------------------- |
-| API e painel (requisições)      | Role da aplicação, sujeita a RLS       | Bedrock e Secrets Manager, via credencial IAM mínima |
-| Worker e varredura de lembretes | Role `scheduler_service` com BYPASSRLS | Igual                                                |
-| Migrations                      | Role de migração, usada só no deploy   | Não usa                                              |
+| Processo                        | Credencial de banco                  | Acesso à AWS                                         |
+| ------------------------------- | ------------------------------------ | ---------------------------------------------------- |
+| API e painel (requisições)      | Role da aplicação, sujeita a RLS     | Bedrock e Secrets Manager, via credencial IAM mínima |
+| Worker e varredura de lembretes | Role `worker_jobs` com BYPASSRLS     | Igual                                                |
+| Migrations                      | Role de migração, usada só no deploy | Não usa                                              |
+
+O worker usa `worker_jobs` só para a fila de jobs. Escritas específicas de clínica feitas pelo worker passam por sessão da role da aplicação, sujeita a RLS. Ver [ADR 0002](./decisions/0002-contas-de-banco.md).
 
 ## 6. Estrutura do código
 
@@ -165,8 +167,8 @@ agente-clinica/
 
 | Interface         | Responsabilidade                                                           | Estudo                   | MVP                      | Etapa  |
 | ----------------- | -------------------------------------------------------------------------- | ------------------------ | ------------------------ | ------ |
-| `Channel`         | Receber e enviar mensagem; enviar template fora da janela de 24h           | `CliChannel`             | `WhatsAppClient`         | 3 e 17 |
-| `LLMClient`       | Completar com ferramentas e saída estruturada; registrar tokens e latência | `AnthropicClient`        | `BedrockClient`          | 6 e 16 |
+| `Channel`         | Receber e enviar mensagem. Enviar template fora da janela de 24h           | `CliChannel`             | `WhatsAppClient`         | 3 e 17 |
+| `LLMClient`       | Completar com ferramentas e saída estruturada. Registrar tokens e latência | `AnthropicClient`        | `BedrockClient`          | 6 e 16 |
 | `EmbeddingClient` | Gerar embeddings e registrar o modelo usado                                | `BedrockEmbeddingClient` | `BedrockEmbeddingClient` | 8      |
 | `AgendaProvider`  | Disponibilidade, criar, cancelar                                           | `AgendaPropria`          | `AgendaPropria`          | 5      |
 | `ReminderService` | Enviar lembrete e registrar resposta                                       | Igual                    | Igual                    | 11     |
@@ -184,8 +186,8 @@ Um banco, `tenant_id` em toda tabela. Nomes idênticos entre estudo e MVP.
 | `regras_agendamento`                                                      | 2                    | Antecedência mínima e máxima, janela de cancelamento                                           |
 | `pacientes_contatos`                                                      | 2                    | Nome e telefone, sem prontuário                                                                |
 | `conversas`                                                               | 2                    | `estado_conversa`, `human_mode`, `contato_telefone`                                            |
-| `mensagens`                                                               | 2                    | `mensagens.id` com UNIQUE                                                                      |
-| `jobs`                                                                    | 3                    | `type`, `payload`, `status`, `run_at`, `attempts`, `locked_at`, `locked_by`, `last_error`      |
+| `mensagens`                                                               | 2                    | `mensagens.id` como chave primária                                                             |
+| `jobs`                                                                    | 2 (schema) e 3 (uso) | `type`, `payload`, `status`, `run_at`, `attempts`, `locked_at`, `locked_by`, `last_error`      |
 | `agendamentos`                                                            | 5                    | `profissional_id`, `servico_id`, `contato_telefone`, `inicio`, `fim`, `status`                 |
 | `handoffs`                                                                | 2 (schema) e 5 (uso) | Conversa, motivo, notificação enviada, quem assumiu, início e devolução ao bot                 |
 | `conhecimento_clinica`                                                    | 8                    | Chunks com embedding, `categoria` (permitido/bloqueado) e modelo de embedding                  |
@@ -219,7 +221,7 @@ Valores fixos, iguais no estudo e no MVP:
 ```
 Mensagem (WhatsApp ou CLI)
  ↓
-Channel.receive → grava em mensagens (mensagens.id é a chave primária, com o identificador da mensagem na Meta; duplicada é ignorada)
+Channel.receive → grava em mensagens (mensagens.id é a chave primária, com o identificador da mensagem na Meta. Duplicada é ignorada)
  ↓
 Cria job PROCESS_INBOUND_MESSAGE (pending) e confirma recebimento
 
@@ -229,7 +231,7 @@ SELECT ... FROM jobs ... FOR UPDATE SKIP LOCKED                  trava do job
  ↓
 SELECT estado_conversa FROM conversas WHERE id = ... FOR UPDATE  trava da conversa
  ↓
-Se human_mode = true → não responde; a mensagem aparece no painel
+Se human_mode = true → não responde. A mensagem aparece no painel
  ↓
 Classificação (categoria + confiança)
  ├─ administrativo / agendamento  → RAG / function calling
@@ -244,7 +246,7 @@ UPDATE estado_conversa; COMMIT; job = done
 
 As duas travas resolvem problemas diferentes. `SKIP LOCKED` impede que dois workers peguem o mesmo job. `FOR UPDATE` na conversa impede que duas mensagens da mesma conversa sejam processadas ao mesmo tempo.
 
-Nas etapas 3 a 5 a classificação é por regra determinística. A IA entra na etapa 6, por cima do motor de estados que já funciona.
+Nas etapas 3 a 5 não há classificação de intenção. A IA entra a partir da etapa 6, por cima do motor de estados que já funciona. A classificação entra na etapa 7, primeiro por regra, como baseline, e depois com LLM. A sequência está em [`etapas.md`](./etapas.md).
 
 ### 8.2 Lembretes
 
@@ -261,7 +263,7 @@ Fluxo:
 ```
 Agendamento confirmado → aplica a regra de antecedência e cria registros em lembretes
 
-[varredura, a cada 15 min, role scheduler_service]
+[varredura, a cada 15 min, role worker_jobs]
  ↓
 ReminderService.buscar_pendentes() → lembretes com enviar_em <= agora e status 'pendente'
  ↓
@@ -271,7 +273,7 @@ Para cada um: cria job SEND_REMINDER (run_at = agora) e marca como 'enfileirado'
  ↓
 Resposta do paciente → classificação restrita (confirmar / cancelar / remarcar / dúvida)
  ↓
-Sem resposta ao T-7 → nenhum lembrete adicional; o próximo passo é o T-1
+Sem resposta ao T-7 → nenhum lembrete adicional. O próximo passo é o T-1
 Sem resposta ao T-1 → handoff para a recepção (seção 8.4)
 ```
 
@@ -307,7 +309,7 @@ Um handoff é aberto quando: a mensagem é `clinico_bloqueado` ou `urgencia`, a 
 Handoff aberto → grava em handoffs e muda estado_conversa para 'escalada'
  ↓
 Job NOTIFY_HANDOFF → envia template ao WhatsApp pessoal da recepção de plantão
- (número em clinicas.telefone_plantao; inclui motivo e link para a conversa no painel)
+ (número em clinicas.telefone_plantao. Inclui motivo e link para a conversa no painel)
  ↓
 Recepção abre o painel e lê o histórico
  ↓
@@ -315,7 +317,7 @@ Recepção abre o painel e lê o histórico
  ↓
 Recepção responde pelo painel → sai pelo número oficial da clínica
  ↓
-"Devolver ao bot" ou encerramento → human_mode = false; registra fim no handoff
+"Devolver ao bot" ou encerramento → human_mode = false. Registra fim no handoff
 ```
 
 Pontos que precisam ficar claros:
@@ -331,7 +333,7 @@ Pontos que precisam ficar claros:
 
 | Ambiente              | Banco                                    | Canal                           | IA e embeddings                            | Hospedagem    | Dado                               |
 | --------------------- | ---------------------------------------- | ------------------------------- | ------------------------------------------ | ------------- | ---------------------------------- |
-| Desenvolvimento local | Postgres + pgvector em Docker, RLS ativo | CLI                             | LLM via API direta; embeddings via Bedrock | Máquina local | Fictício                           |
+| Desenvolvimento local | Postgres + pgvector em Docker, RLS ativo | CLI                             | LLM via API direta. Embeddings via Bedrock | Máquina local | Fictício                           |
 | Demo (vídeo)          | Supabase Free                            | Número de teste da Meta         | Bedrock                                    | Lightsail     | Fictício                           |
 | Piloto                | Supabase Pro                             | Número real via Embedded Signup | Bedrock                                    | Lightsail     | Real, com controles de LGPD ativos |
 
@@ -353,7 +355,7 @@ O ambiente local precisa de credencial IAM de permissão mínima, com acesso ao 
 | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | Unitários       | Regras de agendamento (conflito, duplicidade, antecedência, janela de cancelamento), regras de lembrete (T-7, T-1, consultas com menos de 7 dias, remarcação), transições de estado                                   | Toda mudança                                                                              |
 | Integração      | Fila, `SKIP LOCKED`, deduplicação, persistência, handoff                                                                                                                                                              | Toda mudança                                                                              |
-| Concorrência    | Dois workers no mesmo job; mensagens seguidas da mesma conversa sem agendamento duplicado                                                                                                                             | CI                                                                                        |
+| Concorrência    | Dois workers no mesmo job. Mensagens seguidas da mesma conversa sem agendamento duplicado                                                                                                                             | CI                                                                                        |
 | Isolamento      | Consulta de uma clínica nunca retorna dado de outra, com RLS ativo, em todas as tabelas com `tenant_id`, inclusive pelo painel                                                                                        | CI. Obrigatório antes de qualquer piloto                                                  |
 | Painel          | Usuário de uma clínica não vê conversas, agenda nem handoffs de outra                                                                                                                                                 | CI                                                                                        |
 | Avaliação de IA | 30 a 50 conversas simuladas e conjunto de tentativas de desvio. Métricas: acerto de intenção, recall de `clinico_bloqueado` e `urgencia` (falso negativo é o erro mais caro), escalonamento correto, custo e latência | Sob demanda e antes de mudar prompt ou modelo. Reexecutada após a migração para o Bedrock |
@@ -393,36 +395,40 @@ Qualquer decisão técnica (D-xx) ou questão em aberto (Q-xx) citada nas entreg
 
 **Backup.** Plano Pro do Supabase, com backup diário e retenção de 7 dias. A restauração é testada antes do piloto.
 
-**Multicliente.** Cada clínica tem o próprio número de WhatsApp, sob o mesmo Business Manager na Meta. Um único webhook atende todas as clínicas, identificando a clínica pelo `phone_number_id`. A clínica é dona do número e do histórico; o time é operador autorizado.
+**Multicliente.** Cada clínica tem o próprio número de WhatsApp, sob o mesmo Business Manager na Meta. Um único webhook atende todas as clínicas, identificando a clínica pelo `phone_number_id`. A clínica é dona do número e do histórico. O time é operador autorizado.
 
 **Monitoramento.** Métricas da Lightsail para infraestrutura. Log estruturado para produto: taxa de confirmação de lembrete, taxa de agendamento concluído pelo agente, taxa de handoff, latência média e custo médio por conversa. Essas métricas aparecem no painel da clínica.
 
 ## 13. Questões em aberto
 
-Estas questões não bloqueiam as etapas 0 a 5. A coluna "Responder até" indica a etapa em que precisam de resposta.
+As questões Q-01 a Q-19 não bloqueiam as etapas 0 a 5. As questões Q-20 a Q-24 precisam de resposta na especificação da etapa 5. A coluna "Responder até" indica a etapa em que precisam de resposta.
 
-| #    | Questão                                                                                                                                                                                                                                                                                                                        | Responder até                        |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------ |
-| Q-01 | Validações do Cohere Embed Multilingual v3: (a) disponibilidade na região e preço atual por token; (b) retenção zero também para embeddings, já que a pergunta do paciente passa por eles; (c) teste de recuperação com 20 a 30 perguntas reais contra o FAQ fictício. Se (c) falhar, alternativa é o Titan Text Embeddings V2 | Etapa 8                              |
-| Q-02 | Permissão de BYPASSRLS para a role de worker no Supabase, ou alternativa com conexão de serviço separada                                                                                                                                                                                                                       | Etapa 15                             |
-| Q-03 | Compatibilidade do pooler do Supabase (modo transação) com `SELECT ... FOR UPDATE` e `SKIP LOCKED`                                                                                                                                                                                                                             | Etapa 4 (teste de concorrência) e 15 |
-| Q-04 | Disponibilidade da restrição de IP de origem no plano Pro                                                                                                                                                                                                                                                                      | Etapa 15                             |
-| Q-05 | Número de tentativas de esclarecimento antes de abrir handoff (hoje: 1)                                                                                                                                                                                                                                                        | Etapa 10                             |
-| Q-06 | Threshold de confiança (hoje: 0,7)                                                                                                                                                                                                                                                                                             | Etapa 10                             |
-| Q-07 | Rigor da classificação clínica: 100% LLM, 100% regra ou híbrida                                                                                                                                                                                                                                                                | Etapa 10                             |
-| Q-08 | Conjunto de tentativas de desvio (perguntas disfarçadas de hipotéticas, "é só curiosidade")                                                                                                                                                                                                                                    | Etapa 10                             |
-| Q-09 | Revisão clínica das mensagens fixas                                                                                                                                                                                                                                                                                            | Etapa 20                             |
-| Q-10 | Teto de custo: R$600 é rígido ou reajustável                                                                                                                                                                                                                                                                                   | Antes do piloto                      |
-| Q-11 | Prazo real da verificação de negócio na Meta                                                                                                                                                                                                                                                                                   | Etapa 17                             |
-| Q-12 | Valores exatos de mensagem por país na Meta                                                                                                                                                                                                                                                                                    | Etapa 20                             |
-| Q-13 | Janela de cancelamento por clínica: precisa ser maior que 1 dia para o T-1 permitir reaproveitar a vaga. Definir o padrão e o que acontece quando a clínica pede mais                                                                                                                                                          | Etapa 11                             |
-| Q-14 | Forma jurídica para o piloto pago: MEI ou ME no Simples Nacional. Depende do faturamento previsto, do número de sócios e das atividades permitidas. Consultar contador                                                                                                                                                         | Etapa 20                             |
-| Q-15 | **Metas de sucesso do piloto.** Não definidas agora. Precisam existir antes da etapa 21, com linha de base e prazo de medição                                                                                                                                                                                                  | Etapa 21                             |
-| Q-16 | **Valores comerciais:** mensalidade e taxa de implantação. Definidos após o desenvolvimento                                                                                                                                                                                                                                    | Após a etapa 19                      |
-| Q-17 | **Tecnologia e autenticação do painel.** Opções a comparar: Next.js com autenticação do próprio Supabase, ou FastAPI com templates e autenticação própria. Decidir com a etapa 13                                                                                                                                              | Etapa 13                             |
-| Q-18 | **Conversa no WhatsApp pessoal:** confirmar se o modelo do MVP é o de notificar a recepção e responder pelo painel (D-29), ou se a recepção precisa conversar diretamente pelo WhatsApp pessoal, o que seria outro produto                                                                                                     | Antes da etapa 13                    |
-| Q-19 | **Dedupe de mensagens por `(tenant_id, id)`.** A chave primária de `mensagens` é global, e hoje uma colisão de id entre clínicas levanta `ColisaoIdEntreTenants`. Avaliar quando o id passar a vir da Meta                                                                                                                      | Etapa 17                             |
-| Q-20 | **Fuso horário por clínica.** `agendamentos.inicio` e `agendamentos.fim` são `timestamptz` em UTC. Falta decidir como cada clínica informa o próprio fuso local e onde entra a conversão para exibição ao paciente. Hoje o código trabalha em UTC e isola a conversão em um único ponto                                        | Etapa 11                             |
+| #    | Questão                                                                                                                                                                                                                                                                                                                                         | Responder até                           |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| Q-01 | Validações do Cohere Embed Multilingual v3: (a) disponibilidade na região e preço atual por token, (b) retenção zero também para embeddings, já que a pergunta do paciente passa por eles, (c) teste de recuperação com 20 a 30 perguntas reais contra o FAQ fictício. Se (c) falhar, alternativa é o Titan Text Embeddings V2                  | Etapa 8                                 |
+| Q-02 | Permissão de BYPASSRLS para a role de worker no Supabase, ou alternativa com conexão de serviço separada                                                                                                                                                                                                                                        | Etapa 15                                |
+| Q-03 | Compatibilidade do pooler do Supabase (modo transação) com `SELECT ... FOR UPDATE` e `SKIP LOCKED`                                                                                                                                                                                                                                              | Etapa 4 (teste de concorrência) e 15    |
+| Q-04 | Disponibilidade da restrição de IP de origem no plano Pro                                                                                                                                                                                                                                                                                       | Etapa 15                                |
+| Q-05 | Número de tentativas de esclarecimento antes de abrir handoff (hoje: 1)                                                                                                                                                                                                                                                                         | Etapa 10                                |
+| Q-06 | Threshold de confiança (hoje: 0,7)                                                                                                                                                                                                                                                                                                              | Etapa 10                                |
+| Q-07 | Rigor da classificação clínica: 100% LLM, 100% regra ou híbrida                                                                                                                                                                                                                                                                                 | Etapa 10                                |
+| Q-08 | Conjunto de tentativas de desvio (perguntas disfarçadas de hipotéticas, "é só curiosidade")                                                                                                                                                                                                                                                     | Etapa 10                                |
+| Q-09 | Revisão clínica das mensagens fixas                                                                                                                                                                                                                                                                                                             | Etapa 20                                |
+| Q-10 | Teto de custo: R$600 é rígido ou reajustável                                                                                                                                                                                                                                                                                                    | Antes do piloto                         |
+| Q-11 | Prazo real da verificação de negócio na Meta                                                                                                                                                                                                                                                                                                    | Etapa 17                                |
+| Q-12 | Valores exatos de mensagem por país na Meta                                                                                                                                                                                                                                                                                                     | Etapa 20                                |
+| Q-13 | Janela de cancelamento por clínica: precisa ser maior que 1 dia para o T-1 permitir reaproveitar a vaga. Definir o padrão e o que acontece quando a clínica pede mais                                                                                                                                                                           | Etapa 11                                |
+| Q-14 | Forma jurídica para o piloto pago: MEI ou ME no Simples Nacional. Depende do faturamento previsto, do número de sócios e das atividades permitidas. Consultar contador                                                                                                                                                                          | Etapa 20                                |
+| Q-15 | **Metas de sucesso do piloto.** Não definidas agora. Precisam existir antes da etapa 21, com linha de base e prazo de medição                                                                                                                                                                                                                   | Etapa 21                                |
+| Q-16 | **Valores comerciais:** mensalidade e taxa de implantação. Definidos após o desenvolvimento                                                                                                                                                                                                                                                     | Após a etapa 19                         |
+| Q-17 | **Tecnologia e autenticação do painel.** Opções a comparar: Next.js com autenticação do próprio Supabase, ou FastAPI com templates e autenticação própria. Decidir com a etapa 13                                                                                                                                                               | Etapa 13                                |
+| Q-18 | **Conversa no WhatsApp pessoal:** confirmar se o modelo do MVP é o de notificar a recepção e responder pelo painel (D-29), ou se a recepção precisa conversar diretamente pelo WhatsApp pessoal, o que seria outro produto                                                                                                                      | Antes da etapa 13                       |
+| Q-19 | **Dedupe de mensagens por `(tenant_id, id)`.** A chave primária de `mensagens` é global, e hoje uma colisão de id entre clínicas levanta `ColisaoIdEntreTenants`. Avaliar quando o id passar a vir da Meta                                                                                                                                      | Etapa 17                                |
+| Q-20 | **Paciente no agendamento.** A tabela `agendamentos` (seção 7) lista profissional, serviço, data e hora e status, sem campo de paciente ou contato. Definir como o agendamento se liga ao paciente                                                                                                                                              | Etapa 5                                 |
+| Q-21 | **Duração da consulta.** `servicos.duracao_minutos` guarda a duração por serviço, e a clínica fictícia define a duração por profissional. Definir qual vale no cálculo de conflito de horário                                                                                                                                                   | Etapa 5                                 |
+| Q-22 | **Cancelamento fora da janela.** Definir se um pedido de cancelamento feito com menos antecedência que a janela de cancelamento é rejeitado ou vira handoff para a recepção                                                                                                                                                                     | Etapa 5                                 |
+| Q-23 | **Fuso horário.** `agendamentos.inicio` e `agendamentos.fim` são `timestamptz` em UTC, e o código isola a conversão em um único ponto. Falta definir como cada clínica informa o próprio fuso local, qual fuso vale para as regras de antecedência, a janela de cancelamento e os lembretes, e onde entra a conversão para exibição ao paciente | Etapa 5 (regras) / Etapa 11 (lembretes) |
+| Q-24 | **Quem foi notificado no handoff.** A seção 8.4 pede o registro de quem foi notificado, e a tabela `handoffs` só tem `notificado_em`. Definir se o schema ganha esse campo                                                                                                                                                                      | Etapa 5                                 |
 
 ## 14. Riscos
 
@@ -437,9 +443,6 @@ Estas questões não bloqueiam as etapas 0 a 5. A coluna "Responder até" indica
 | Credencial IAM guardada na Lightsail                                                   | Médio                                  | Permissão mínima, rotação, sem acesso administrativo                                                                         |
 | Custo acima do teto                                                                    | Médio                                  | Métrica de custo por conversa, prompt caching, decisão antecipada                                                            |
 | Demora na verificação da Meta                                                          | Alto para o piloto                     | Início durante a etapa 17                                                                                                    |
-| Escopo crescer antes da etapa 10                                                       | Alto                                   | Ordem por dependência; integrações externas fora do MVP                                                                      |
-| Núcleo gerado por assistente em vez de escrito à mão                                   | Médio para o aprendizado               | Núcleo escrito pela pessoa; assistentes revisam e sugerem testes                                                             |
+| Escopo crescer antes da etapa 10                                                       | Alto                                   | Ordem por dependência. Integrações externas fora do MVP                                                                      |
 | Piloto sem metas definidas                                                             | Alto para a decisão de seguir ou parar | Q-15 é pré-requisito da etapa 21                                                                                             |
-| Sigilo do documento e do código                                                        | Médio                                  | Publicar só o núcleo genérico; regras e detalhes do produto ficam privados                                                   |
-
-                                                               |
+| Sigilo do documento e do código                                                        | Médio                                  | Publicar só o núcleo genérico. Regras e detalhes do produto ficam privados                                                   |

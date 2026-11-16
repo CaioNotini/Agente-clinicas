@@ -84,8 +84,8 @@ class Job(Base):
     
     id = Column(Integer, primary_key=True)
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("clinicas.tenant_id"), nullable=False)
-    type = Column(String(50), nullable=False)  # PROCESS_INBOUND, SEND_REMINDER
-    status = Column(String(20), default='pending')  # pending, processing, done, failed, dead
+    type = Column(String(50), nullable=False)  # PROCESS_INBOUND_MESSAGE, SEND_WHATSAPP, SEND_REMINDER, NOTIFY_HANDOFF
+    status = Column(String(20), default='pending')  # pending, processing, done, dead
     payload = Column(JSON)
     run_at = Column(DateTime, default=func.now())
     attempts = Column(Integer, default=0)

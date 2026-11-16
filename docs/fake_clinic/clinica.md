@@ -1,3 +1,7 @@
+Papel: dados fictícios da clínica de referência, com profissionais, horários, convênios e regras de agendamento.
+Entrada: docs/status.md
+Relaciona-se com: ../etapas.md (etapa 0), ./FAQ.md (perguntas derivadas destes dados), ./pergs_bloqueadas.md (perguntas que o agente não responde).
+
 # Clínica Fictícia: Estrutura Organizacional e Operacional
 
 **Versão:** 1.0

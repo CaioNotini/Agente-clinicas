@@ -6,8 +6,6 @@ Relaciona-se com: status.md, estudo.md, arquitetura.md, principios.md, decisions
 
 # Etapas do projeto
 
-> Rascunho para revisão. Os critérios de pronto ainda precisam ser aprovados pelo Caio, etapa por etapa.
-
 Este arquivo define o plano de construção, do escopo inicial até o piloto com clínicas reais. Ele é a fonte única da sequência de etapas. O estado atual de cada etapa fica somente em [status.md](./status.md).
 
 ## Regras deste arquivo
@@ -72,11 +70,11 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
   - 0.1 `clinica.md`, com profissionais, horários, convênios e regras de agendamento.
   - 0.2 `FAQ.md`, com cada pergunta marcada como permitido ou bloqueado.
   - 0.3 `pergs_bloqueadas.md`, preenchido pelo Caio.
-- **Código:** nenhum. Os arquivos ficam em [fake_clinic/](./fake_clinic/) |.
+- **Código:** nenhum. Os arquivos ficam em [fake_clinic/](./fake_clinic/).
 - **Critério de pronto:**
-  - os três arquivos existem e seguem o cabeçalho de relações;
-  - cada pergunta do FAQ tem categoria;
-  - a lista de perguntas bloqueadas tem ao menos uma pergunta para `clinico_bloqueado` e uma para `urgencia`, incluindo uma forma indireta;
+  - os três arquivos existem e seguem o cabeçalho de relações.
+  - cada pergunta do FAQ tem categoria.
+  - a lista de perguntas bloqueadas tem ao menos uma pergunta para `clinico_bloqueado` e uma para `urgencia`, incluindo uma forma indireta.
   - nenhum dado parece real.
 - **Fora do escopo:** respostas clínicas. As mensagens fixas são revisadas na etapa 20.
 
@@ -102,17 +100,17 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
 - **Tarefas:**
   - 2.1 extensão pgvector, com imagem e migration.
   - 2.2 tabelas faltantes, em duas migrations.
-  - 2.3 role `scheduler_service`, com BYPASSRLS e sem login.
+  - 2.3 role do worker, com BYPASSRLS. Criada como `scheduler_service`, sem login, e substituída por `worker_jobs`, com login, conforme [ADR 0002](./decisions/0002-contas-de-banco.md).
   - 2.4 RLS, FORCE e policy `isolamento_tenant` em todas as tabelas com `tenant_id`.
   - 2.5 teste de isolamento com a conta da aplicação.
   - 2.6 separação de contas por papel, com a role `app_clinicas` criada por migration e a senha definida no CI a partir de secret.
 - **Código:** `migrations/versions/`, `app/config.py`, `app/db/`, `tests/isolation/`.
 - **Critério de pronto:**
-  - cada migration sobe, desce e sobe de novo sem erro;
-  - o schema tem as tabelas esperadas;
-  - toda tabela com `tenant_id` tem RLS, FORCE e policy;
-  - o teste de isolamento passa com a conta `app_clinicas`;
-  - ao desligar o RLS de propósito, os testes de leitura e de escrita falham;
+  - cada migration sobe, desce e sobe de novo sem erro.
+  - o schema tem as tabelas esperadas.
+  - toda tabela com `tenant_id` tem RLS, FORCE e policy.
+  - o teste de isolamento passa com a conta `app_clinicas`.
+  - ao desligar o RLS de propósito, os testes de leitura e de escrita falham.
   - a pipeline passa no GitHub com a mesma imagem do Docker local.
 - **Fora do escopo:** definição do tenant por rota HTTP, que começa na etapa 13.
 
@@ -127,16 +125,16 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
   - 3.3 worker com `SKIP LOCKED`, controle de tentativas e status `dead`.
 - **Código:** `app/channels/`, `app/jobs/`, `tests/concurrency/`.
 - **Critério de pronto:**
-  - teste com dois workers disputando o mesmo job, em que apenas um processa;
-  - teste de mensagem duplicada, que não gera segundo processamento;
-  - teste de job que vai para `dead` após as tentativas;
+  - teste com dois workers disputando o mesmo job, em que apenas um processa.
+  - teste de mensagem duplicada, que não gera segundo processamento.
+  - teste de job que vai para `dead` após as tentativas.
   - saída dos testes registrada no `status.md`.
 - **Fora do escopo:** inteligência artificial (etapa 6) e WhatsApp (etapa 17).
 
 ### Etapa 4: motor de estados e lock por conversa
 
 - **Depende de:** etapa 3.
-- **Base:** D-07, D-08 e seção 3-B da arquitetura.
+- **Base:** D-07, D-08 e seção 8.1 da arquitetura.
 - **Objetivo:** controlar o estado de cada conversa com transições explícitas, e impedir que duas mensagens da mesma conversa sejam processadas ao mesmo tempo.
 - **Tarefas:**
   - 4.1 estados `idle`, `coletando_info`, `aguardando_confirmacao`, `escalada` e `encerrada`, com transições determinísticas.
@@ -150,7 +148,7 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
 ### Etapa 5: agendamento e handoff determinísticos
 
 - **Depende de:** etapa 4.
-- **Base:** D-11, D-17, D-29, seções 7 e 8.4 da arquitetura.
+- **Base:** D-11, D-17, D-29, seções 7 e 8.4 da arquitetura, Q-20 a Q-24.
 - **Objetivo:** agendar, remarcar e cancelar com regras em código, e registrar handoffs quando necessário.
 - **Tarefas:**
   - 5.5 tabela `agendamentos`, executada antes da 5.1. Migration, classe no modelo, constraint EXCLUDE de conflito, policy `isolamento_tenant`, entrada em `TABELAS_TENANT` e cobertura nos testes de isolamento. Colunas e conflito no [ADR 0004](./decisions/0004-conflito-de-horario.md).
@@ -193,15 +191,15 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
   - 7.4 registro em `log_auditoria`.
 - **Código:** `app/classification/`, `app/auditoria/`, `tests/unit/`.
 - **Critério de pronto:**
-  - toda mensagem `clinico_bloqueado` ou `urgencia` gera registro de auditoria;
-  - confiança abaixo de 0,7 resulta em `ambiguo`;
+  - toda mensagem `clinico_bloqueado` ou `urgencia` gera registro de auditoria.
+  - confiança abaixo de 0,7 resulta em `ambiguo`.
   - os casos da lista de perguntas bloqueadas são testados.
 - **Fora do escopo:** revisão clínica das mensagens fixas, que acontece na etapa 20.
 
 ### Etapa 8: RAG por clínica
 
 - **Depende de:** etapas 2 e 6.
-- **Base:** D-14, seção 6-A e Q-01.
+- **Base:** D-14, seção 8.3 da arquitetura e Q-01.
 - **Objetivo:** responder dúvidas administrativas com base no conteúdo da própria clínica.
 - **Tarefas:**
   - 8.1 `BedrockEmbeddingClient` com Cohere Embed Multilingual v3.
@@ -210,8 +208,8 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
   - 8.4 teste de recuperação com 20 a 30 perguntas reais.
 - **Código:** `app/embeddings/`, `app/rag/`, `tests/isolation/`.
 - **Critério de pronto:**
-  - a busca nunca retorna trecho de outro tenant, verificado pelo teste de isolamento;
-  - trechos marcados como bloqueado nunca são retornados;
+  - a busca nunca retorna trecho de outro tenant, verificado pelo teste de isolamento.
+  - trechos marcados como bloqueado nunca são retornados.
   - a taxa de recuperação do teste de 20 a 30 perguntas é registrada.
 - **Fora do escopo:** o downgrade da extensão `vector` precisa ser revisto nesta etapa, porque a tabela com coluna `vector` impede o `DROP EXTENSION`.
 
@@ -240,8 +238,8 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
   - 10.4 comparação pontual com Sonnet.
 - **Código:** `eval/`.
 - **Critério de pronto:**
-  - o script roda com um comando e registra os resultados com data;
-  - o recall de `clinico_bloqueado` e `urgencia` é registrado;
+  - o script roda com um comando e registra os resultados com data.
+  - o recall de `clinico_bloqueado` e `urgencia` é registrado.
   - Q-05, Q-06 e Q-07 são decididas com base nos resultados.
 
 ### Etapa 11: lembretes T-7 e T-1
@@ -269,7 +267,7 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
   - 12.2 isolamento verificado também para jobs e lembretes.
   - 12.3 prompt caching, somente se o ganho for medido.
 - **Código:** `tests/concurrency/`, `tests/isolation/`.
-- **Critério de pronto:** os testes de concorrência e isolamento passam no CI, e qualquer ganho de prompt caching fica registrado com medição.
+- **Critério de pronto:** os testes de concorrência e isolamento passam no CI, qualquer ganho de prompt caching fica registrado com medição, e os itens de "Estudo pronto" em [estudo.md, seção 9](./estudo.md#9-critério-de-pronto-e-readme) estão atendidos.
 
 ---
 
@@ -286,8 +284,8 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
   - 13.3 `human_mode` e devolução ao bot.
 - **Código:** `app/handoff/`, `tests/unit/`.
 - **Critério de pronto:**
-  - um handoff aberto cria o job de notificação;
-  - uma conversa com `human_mode` ativo não recebe resposta do bot, verificado por teste;
+  - um handoff aberto cria o job de notificação.
+  - uma conversa com `human_mode` ativo não recebe resposta do bot, verificado por teste.
   - a devolução ao bot registra o fim do handoff.
 
 ### Etapa 14: painel de monitoramento
@@ -315,7 +313,7 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
 - **Tarefas:**
   - 15.1 projeto Supabase no plano Free para testes.
   - 15.2 aplicação das migrations.
-  - 15.3 validação de BYPASSRLS para `scheduler_service` (Q-02).
+  - 15.3 validação de BYPASSRLS para `worker_jobs` (Q-02).
   - 15.4 validação do pooler em modo transação com os locks (Q-03).
   - 15.5 teste de restauração de backup.
 - **Critério de pronto:** as migrations sobem no Supabase, a suíte de isolamento passa contra ele, os testes de lock passam e a restauração é registrada.
@@ -337,7 +335,7 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
 ### Etapa 17: WhatsAppClient
 
 - **Depende de:** etapa 13.
-- **Base:** D-15, seções 4 e 4-A da arquitetura.
+- **Base:** D-15, seções 4 e 12 da arquitetura.
 - **Objetivo:** receber e enviar mensagens pela Cloud API da Meta, usando o fluxo já construído.
 - **Tarefas:**
   - 17.1 envio e recebimento pela Cloud API.
@@ -379,7 +377,7 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
 ### Etapa 20: pré-piloto
 
 - **Depende de:** etapa 19.
-- **Base:** seções 4-A, 12 e 14 da arquitetura.
+- **Base:** seções 12 e 14 da arquitetura.
 - **Objetivo:** cumprir os pré-requisitos legais, técnicos e clínicos antes de qualquer dado real.
 - **Tarefas:**
   - 20.1 Business Verification concluída (Q-11).
@@ -389,7 +387,7 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
   - 20.5 revisão clínica das mensagens fixas (Q-09).
   - 20.6 plano Pro do Supabase e Secrets Manager configurado.
   - 20.7 contrato de tratamento de dados com a lista de subprocessadores.
-- **Critério de pronto:** o checklist da seção 4-A está completo, com evidência, e a revisão clínica está registrada.
+- **Critério de pronto:** as tarefas 20.1 a 20.7 estão completas, com evidência, e a revisão clínica está registrada.
 
 ### Etapa 21: piloto
 

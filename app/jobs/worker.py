@@ -8,14 +8,15 @@ BYPASSRLS), conforme docs/decisions/0002-contas-de-banco.md. Nunca usa
 DATABASE_URL. worker_jobs ignora o RLS, entao a captura cross-tenant da fila
 nao depende de app.tenant_id.
 
-Processamento: a funcao de processamento e vazia nesta etapa, definida como
-ponto de extensao (processamento_vazio). A logica real de mensagem entra a
-partir da etapa 4.
+Processamento: a funcao de processamento e um ponto de extensao
+(`processamento=`). O laco rodar() usa por padrao processar_mensagem
+(app/core/processamento.py, etapa 4.4). processar_um mantem processamento_vazio
+como padrao, para uso direto e testes.
 
-Pendencia da etapa 4: escritas especificas de clinica devem passar por uma
-sessao app_clinicas, com RLS de fato. O worker usa worker_jobs apenas para a
-tabela jobs. O filtro explicito de tenant_id e a segunda barreira. Nesta etapa
-app.tenant_id e contrato de contexto, nao barreira.
+Escritas especificas de clinica passam por uma sessao app_clinicas, com RLS de
+fato, dentro de processar_mensagem. O worker usa worker_jobs apenas para a
+tabela jobs. O filtro explicito de tenant_id e a segunda barreira. Na conexao
+worker_jobs, app.tenant_id e contrato de contexto, nao barreira.
 
 Pendencia da etapa 6: nao ha backoff. No retry, run_at fica inalterado, entao o
 job volta a ficar elegivel imediatamente.
@@ -28,6 +29,7 @@ from typing import Callable, Optional
 from sqlalchemy import create_engine, text
 
 from app.config import WORKER_DATABASE_URL
+from app.core.processamento import processar_mensagem
 
 # Engine do worker, conectado com a conta worker_jobs (BYPASSRLS)
 engine_worker = create_engine(WORKER_DATABASE_URL)
@@ -50,7 +52,7 @@ class JobCapturado:
 
 
 def processamento_vazio(conexao, job: JobCapturado) -> None:
-    """Ponto de extensao do processamento. Nesta etapa nao faz nada."""
+    """Processamento que nao faz nada. Padrao de processar_um."""
     return None
 
 
@@ -181,7 +183,7 @@ def varrer_orfaos_esgotados(
 
 def rodar(
     worker_id: Optional[str] = None,
-    processamento: Callable[[object, JobCapturado], None] = processamento_vazio,
+    processamento: Callable[[object, JobCapturado], None] = processar_mensagem,
     limite_segundos: int = LIMITE_LOCK_SEGUNDOS,
     intervalo_ocioso: float = 1.0,
     engine=engine_worker,

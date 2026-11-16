@@ -6,7 +6,7 @@ Relaciona-se com: ../estudo.md, ../arquitetura.md, ../status.md
 
 # Decisões de arquitetura e documentação
 
-Este diretório registra decisões tomadas durante a implementação que ainda não têm lugar em `estudo.md` ou `arquitetura.md`. Decisões já cobertas pelas tabelas D-xx de `arquitetura.md` não são migradas para aqui — ver justificativa na Rodada 2.
+Este diretório registra decisões tomadas durante a implementação que ainda não têm lugar em `estudo.md` ou `arquitetura.md`. Decisões já cobertas pelas tabelas D-xx de `arquitetura.md` não são migradas para aqui.
 
 ## Convenção de nomes
 
@@ -14,28 +14,31 @@ Este diretório registra decisões tomadas durante a implementação que ainda n
 
 ## Status possíveis
 
-- **Proposta** — registrada, ainda não aplicada.
-- **Aceita** — decidida e em vigor.
-- **Substituída** — não vale mais; o registro permanece, com link para a decisão que a substituiu.
+- **Proposta**: registrada, ainda não aplicada.
+- **Aceita**: decidida e em vigor.
+- **Substituída**: não vale mais. O registro permanece, com link para a decisão que a substituiu.
 
 ## Template
 
-```markdown
+O bloco abaixo é o conteúdo completo de um ADR novo, incluindo o cabeçalho entre cercas de código.
+
+````markdown
+```
 Papel: <uma linha>
 Entrada: docs/status.md
 Relaciona-se com: <links relativos para documentos, ADRs ou testes>
 ```
 
-# NNNN — Título curto da decisão
+# NNNN: Título curto da decisão
 
 ## Contexto
 
-O que motivou a decisão; trecho do documento canônico que a gerou (com link).
+O que motivou a decisão, e o trecho do documento canônico que a gerou (com link).
 
 ## Alternativas consideradas
 
-- Alternativa A — por que foi descartada
-- Alternativa B — por que foi descartada
+- Alternativa A: por que foi descartada
+- Alternativa B: por que foi descartada
 
 ## Decisão
 
@@ -52,3 +55,4 @@ O que passa a ser verdade, o que fica mais difícil, o que precisa ser revisitad
 ## Status
 
 Proposta | Aceita | Substituída por NNNN
+````
