@@ -153,11 +153,12 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
 - **Base:** D-11, D-17, D-29, seções 7 e 8.4 da arquitetura.
 - **Objetivo:** agendar, remarcar e cancelar com regras em código, e registrar handoffs quando necessário.
 - **Tarefas:**
+  - 5.5 tabela `agendamentos`, executada antes da 5.1. Migration, classe no modelo, constraint EXCLUDE de conflito, policy `isolamento_tenant`, entrada em `TABELAS_TENANT` e cobertura nos testes de isolamento. Colunas e conflito no [ADR 0004](./decisions/0004-conflito-de-horario.md).
   - 5.1 interface `AgendaProvider` e implementação `AgendaPropria`.
   - 5.2 regras de conflito, duplicidade, antecedência e janela de cancelamento.
   - 5.3 criação, remarcação e cancelamento de agendamentos.
-  - 5.4 abertura de handoff na tabela `handoffs`.
-- **Código:** `app/agenda/`, `app/handoff/`, `tests/unit/`.
+  - 5.4 abertura de handoff na tabela `handoffs`. Nesta etapa só grava, sem mudar o estado da conversa.
+- **Código:** `migrations/versions/`, `app/db/models.py`, `app/agenda/`, `app/handoff/`, `tests/unit/`, `tests/integration/`, `tests/concurrency/`, `tests/isolation/`.
 - **Critério de pronto:** cada regra tem teste unitário, incluindo os casos de borda, e um handoff gravado aparece no banco.
 - **Fora do escopo:** notificação real à recepção, que começa na etapa 13.
 
@@ -280,7 +281,7 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
 - **Base:** D-29, seção 8.4 da arquitetura e Q-18.
 - **Objetivo:** abrir handoffs com motivo, notificar a recepção, pausar o bot na conversa e devolvê-la ao bot quando a recepção terminar.
 - **Tarefas:**
-  - 13.1 abertura de handoff com motivo.
+  - 13.1 abertura de handoff com motivo. Inclui a transição da conversa para `escalada`, validada pelo grafo de [`decisions/0003-grafo-de-transicoes.md`](./decisions/0003-grafo-de-transicoes.md). A etapa 5 só grava o handoff, sem mudar o estado.
   - 13.2 job `NOTIFY_HANDOFF`, com canal simulado no estudo.
   - 13.3 `human_mode` e devolução ao bot.
 - **Código:** `app/handoff/`, `tests/unit/`.

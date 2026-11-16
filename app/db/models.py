@@ -4,9 +4,11 @@ Modelos SQLAlchemy — todas as tabelas
 """
 
 from sqlalchemy import (
-    Column, Integer, String, DateTime, JSON, Boolean, 
-    UniqueConstraint, Index, ForeignKey, UUID, Time, Float
+    Column, Integer, String, DateTime, JSON, Boolean,
+    UniqueConstraint, Index, ForeignKey, UUID, Time, Float,
+    CheckConstraint, text
 )
+from sqlalchemy.dialects.postgresql import ExcludeConstraint
 from sqlalchemy.sql import func
 from app.db.base import Base  # Importa de base.py, não de __init__
 import uuid
@@ -246,4 +248,43 @@ class PrivacyRequest(Base):
 
     __table_args__ = (
         Index('idx_privacy_requests_tenant', 'tenant_id'),
+    )
+
+
+# Agendamentos de consultas: profissional, servico, janela de tempo e status.
+# inicio e fim sao timestamptz (com fuso, gravados em UTC). As demais tabelas usam
+# timestamp sem fuso; esta e a excecao, registrada no ADR 0004 e na arquitetura.
+# O conflito de horario e garantido pela constraint EXCLUDE, com a mesma semantica
+# da funcao pura de conflito (intervalo semiaberto [inicio, fim)). Ver ADR 0004.
+class Agendamento(Base):
+    __tablename__ = "agendamentos"
+
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("clinicas.tenant_id"), nullable=False)
+    profissional_id = Column(Integer, ForeignKey("profissionais.id"), nullable=False)
+    servico_id = Column(Integer, ForeignKey("servicos.id"), nullable=False)
+    contato_telefone = Column(String(20), nullable=False)
+    inicio = Column(DateTime(timezone=True), nullable=False)
+    fim = Column(DateTime(timezone=True), nullable=False)
+    status = Column(String(20), nullable=False, server_default="agendado")  # agendado (ativo) | cancelado
+    criada_em = Column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        # Intervalo valido: fim sempre depois do inicio
+        CheckConstraint("fim > inicio", name="ck_agendamentos_intervalo"),
+        # Status restrito aos dois valores desta etapa
+        CheckConstraint("status IN ('agendado', 'cancelado')", name="ck_agendamentos_status"),
+        # Conflito: nenhum par de agendamentos ativos do mesmo profissional da mesma
+        # clinica pode ter intervalos que se sobrepoem. Intervalo semiaberto, entao
+        # horarios adjacentes nao conflitam. Precisa da extensao btree_gist para os
+        # operadores de igualdade de tenant_id (uuid) e profissional_id (integer).
+        ExcludeConstraint(
+            ("tenant_id", "="),
+            ("profissional_id", "="),
+            (text("tstzrange(inicio, fim)"), "&&"),
+            using="gist",
+            where=text("status = 'agendado'"),
+            name="ex_agendamentos_conflito",
+        ),
+        Index("idx_agendamentos_tenant", "tenant_id"),
     )

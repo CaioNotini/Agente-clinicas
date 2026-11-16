@@ -186,7 +186,7 @@ Um banco, `tenant_id` em toda tabela. Nomes idênticos entre estudo e MVP.
 | `conversas`                                                               | 2                    | `estado_conversa`, `human_mode`, `contato_telefone`                                            |
 | `mensagens`                                                               | 2                    | `mensagens.id` com UNIQUE                                                                      |
 | `jobs`                                                                    | 3                    | `type`, `payload`, `status`, `run_at`, `attempts`, `locked_at`, `locked_by`, `last_error`      |
-| `agendamentos`                                                            | 5                    | Profissional, serviço, data e hora, status                                                     |
+| `agendamentos`                                                            | 5                    | `profissional_id`, `servico_id`, `contato_telefone`, `inicio`, `fim`, `status`                 |
 | `handoffs`                                                                | 2 (schema) e 5 (uso) | Conversa, motivo, notificação enviada, quem assumiu, início e devolução ao bot                 |
 | `conhecimento_clinica`                                                    | 8                    | Chunks com embedding, `categoria` (permitido/bloqueado) e modelo de embedding                  |
 | `log_auditoria`                                                           | 2 (schema) e 7 (uso) | Toda mensagem `clinico_bloqueado` ou `urgencia`, com categoria e texto original                |
@@ -201,10 +201,13 @@ Um banco, `tenant_id` em toda tabela. Nomes idênticos entre estudo e MVP.
 CREATE INDEX idx_lembretes_pendentes ON lembretes (enviar_em) WHERE status = 'pendente';
 ```
 
+Em `agendamentos`, as colunas `inicio` e `fim` usam `timestamptz`, com os instantes gravados em UTC. Esta é a única exceção no schema, onde as demais tabelas usam `timestamp` sem fuso. O conflito de horário entre agendamentos ativos do mesmo profissional é garantido por uma constraint `EXCLUDE` com intervalo semiaberto `[inicio, fim)`, descrita no [ADR 0004](./decisions/0004-conflito-de-horario.md).
+
 Valores fixos, iguais no estudo e no MVP:
 
 - **Estados da conversa:** `idle`, `coletando_info`, `aguardando_confirmacao`, `escalada`, `encerrada`.
 - **Status de job:** `pending`, `processing`, `done`, `dead`. O estado `failed` foi removido porque o worker não o usa, e pode voltar com ADR se o backoff exigir.
+- **Status de agendamento:** `agendado` e `cancelado`.
 - **Tipos de job:** `PROCESS_INBOUND_MESSAGE`, `SEND_WHATSAPP`, `SEND_REMINDER`, `NOTIFY_HANDOFF`.
 - **Categorias de intenção:** `administrativo`, `agendamento`, `clinico_bloqueado`, `urgencia`, `ambiguo`.
 - **Ferramentas expostas ao modelo:** `verificar_disponibilidade`, `criar_agendamento`, `cancelar`, `buscar_duvida_frequente`.
@@ -419,6 +422,7 @@ Estas questões não bloqueiam as etapas 0 a 5. A coluna "Responder até" indica
 | Q-17 | **Tecnologia e autenticação do painel.** Opções a comparar: Next.js com autenticação do próprio Supabase, ou FastAPI com templates e autenticação própria. Decidir com a etapa 13                                                                                                                                              | Etapa 13                             |
 | Q-18 | **Conversa no WhatsApp pessoal:** confirmar se o modelo do MVP é o de notificar a recepção e responder pelo painel (D-29), ou se a recepção precisa conversar diretamente pelo WhatsApp pessoal, o que seria outro produto                                                                                                     | Antes da etapa 13                    |
 | Q-19 | **Dedupe de mensagens por `(tenant_id, id)`.** A chave primária de `mensagens` é global, e hoje uma colisão de id entre clínicas levanta `ColisaoIdEntreTenants`. Avaliar quando o id passar a vir da Meta                                                                                                                      | Etapa 17                             |
+| Q-20 | **Fuso horário por clínica.** `agendamentos.inicio` e `agendamentos.fim` são `timestamptz` em UTC. Falta decidir como cada clínica informa o próprio fuso local e onde entra a conversão para exibição ao paciente. Hoje o código trabalha em UTC e isola a conversão em um único ponto                                        | Etapa 11                             |
 
 ## 14. Riscos
 
