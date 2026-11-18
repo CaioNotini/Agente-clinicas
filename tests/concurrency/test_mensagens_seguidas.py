@@ -65,11 +65,12 @@ def _enfileirar_mensagem(tenant_id, contato_telefone, tenant_no_payload=None):
     with engine_admin.begin() as conexao:
         return conexao.execute(
             text(
-                "INSERT INTO jobs (tenant_id, type, status, payload, run_at, attempts, max_attempts) "
-                "VALUES (:t, 'PROCESS_INBOUND_MESSAGE', 'pending', CAST(:payload AS JSON), now(), 0, 3) "
+                "INSERT INTO jobs (tenant_id, type, status, payload, contato_telefone, "
+                "run_at, attempts, max_attempts) "
+                "VALUES (:t, 'PROCESS_INBOUND_MESSAGE', 'pending', CAST(:payload AS JSON), :tel, now(), 0, 3) "
                 "RETURNING id"
             ),
-            {"t": tenant_id, "payload": payload},
+            {"t": tenant_id, "payload": payload, "tel": contato_telefone},
         ).scalar()
 
 

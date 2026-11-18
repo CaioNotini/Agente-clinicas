@@ -50,7 +50,7 @@ def _colunas_minimas(tabela, tenant):
         "servicos": {"nome": "Servico Intruso", "ativo": True},
         "conversas": {"contato_telefone": "(00) 00000-0000", "estado_conversa": "idle", "human_mode": False},
         "pacientes_contatos": {"contato_telefone": "(00) 00000-0000"},
-        "mensagens": {"id": f"intruso-{uuid.uuid4()}", "contato_telefone": "(00) 00000-0000", "conteudo": "x", "direcao": "in"},
+        "mensagens": {"id": f"intruso-{uuid.uuid4()}", "contato_telefone": "(00) 00000-0000", "conteudo": "x", "direcao": "entrada"},
         "jobs": {"type": "SEND_REMINDER", "status": "pending"},
         "log_auditoria": {"acao": "intruso"},
         "consents": {"contato_telefone": "(00) 00000-0000", "tipo": "lembrete", "versao_texto": "v1"},
@@ -132,7 +132,7 @@ def _semear(conexao, tenant):
     conexao.execute(
         text(
             "INSERT INTO mensagens (id, tenant_id, contato_telefone, conteudo, direcao) "
-            "VALUES (:id, :t, :tel, 'Mensagem exemplo', 'in')"
+            "VALUES (:id, :t, :tel, 'Mensagem exemplo', 'entrada')"
         ),
         {"id": f"msg-{tenant}", "t": str(tenant), "tel": TELEFONE},
     )

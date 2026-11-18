@@ -187,7 +187,7 @@ Um banco, `tenant_id` em toda tabela. Nomes idênticos entre estudo e MVP.
 | `pacientes_contatos`                                                      | 2                    | Nome e telefone, sem prontuário                                                                |
 | `conversas`                                                               | 2                    | `estado_conversa`, `human_mode`, `contato_telefone`                                            |
 | `mensagens`                                                               | 2                    | `mensagens.id` como chave primária                                                             |
-| `jobs`                                                                    | 2 (schema) e 3 (uso) | `type`, `payload`, `status`, `run_at`, `attempts`, `locked_at`, `locked_by`, `last_error`      |
+| `jobs`                                                                    | 2 (schema) e 3 (uso) | `type`, `payload`, `contato_telefone`, `status`, `run_at`, `attempts`, `locked_at`, `locked_by`, `last_error`. Ordem por conversa no [ADR 0005](./decisions/0005-ordem-por-conversa.md) |
 | `agendamentos`                                                            | 5                    | `profissional_id`, `servico_id`, `contato_telefone`, `inicio`, `fim`, `status`                 |
 | `handoffs`                                                                | 2 (schema) e 5 (uso) | Conversa, motivo, notificação enviada, quem assumiu, início e devolução ao bot                 |
 | `conhecimento_clinica`                                                    | 8                    | Chunks com embedding, `categoria` (permitido/bloqueado) e modelo de embedding                  |
@@ -227,7 +227,7 @@ Cria job PROCESS_INBOUND_MESSAGE (pending) e confirma recebimento
 
 [worker]
  ↓
-SELECT ... FROM jobs ... FOR UPDATE SKIP LOCKED                  trava do job
+SELECT ... FROM jobs ... FOR UPDATE SKIP LOCKED                  trava do job, sem job anterior pendente da conversa (ADR 0005)
  ↓
 SELECT estado_conversa FROM conversas WHERE id = ... FOR UPDATE  trava da conversa
  ↓

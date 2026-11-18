@@ -85,19 +85,30 @@ class Job(Base):
     id = Column(Integer, primary_key=True)
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("clinicas.tenant_id"), nullable=False)
     type = Column(String(50), nullable=False)  # PROCESS_INBOUND_MESSAGE, SEND_WHATSAPP, SEND_REMINDER, NOTIFY_HANDOFF
-    status = Column(String(20), default='pending')  # pending, processing, done, dead
+    status = Column(String(20), nullable=False, server_default=text("'pending'"))
     payload = Column(JSON)
-    run_at = Column(DateTime, default=func.now())
-    attempts = Column(Integer, default=0)
-    max_attempts = Column(Integer, default=3)
+    # Conversa do job, para a ordem por conversa (ADR 0005). NULL em jobs sem conversa.
+    contato_telefone = Column(String(20))
+    run_at = Column(DateTime, nullable=False, server_default=func.now())
+    attempts = Column(Integer, nullable=False, server_default=text("0"))
+    max_attempts = Column(Integer, nullable=False, server_default=text("3"))
     last_error = Column(String(500))
     locked_at = Column(DateTime)
     locked_by = Column(String(100))
     criada_em = Column(DateTime, server_default=func.now())
-    
+
     __table_args__ = (
         Index('idx_jobs_status_run_at', 'status', 'run_at'),
         Index('idx_jobs_tenant', 'tenant_id'),
+        Index(
+            'idx_jobs_conversa_pendentes', 'tenant_id', 'contato_telefone', 'id',
+            postgresql_where=text("status IN ('pending', 'processing')"),
+        ),
+        CheckConstraint("status IN ('pending', 'processing', 'done', 'dead')", name="ck_jobs_status"),
+        CheckConstraint(
+            "type <> 'PROCESS_INBOUND_MESSAGE' OR contato_telefone IS NOT NULL",
+            name="ck_jobs_mensagem_tem_conversa",
+        ),
     )
 
 
@@ -108,11 +119,12 @@ class Mensagem(Base):
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("clinicas.tenant_id"), nullable=False)
     contato_telefone = Column(String(20), nullable=False)
     conteudo = Column(String(4096), nullable=False)
-    direcao = Column(String(10))  # 'entrada' ou 'saida'
+    direcao = Column(String(10))
     criada_em = Column(DateTime, server_default=func.now())
-    
+
     __table_args__ = (
         Index('idx_mensagens_tenant_contato', 'tenant_id', 'contato_telefone'),
+        CheckConstraint("direcao IN ('entrada', 'saida')", name="ck_mensagens_direcao"),
     )
 
 
@@ -122,8 +134,9 @@ class Conversa(Base):
     id = Column(Integer, primary_key=True)
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("clinicas.tenant_id"), nullable=False)
     contato_telefone = Column(String(20), nullable=False)
-    estado_conversa = Column(String(30), default='idle')  # idle, coletando_info, aguardando_confirmacao, escalada, encerrada
-    human_mode = Column(Boolean, default=False)
+    # Estados de app/core/estados.py e do ADR 0003
+    estado_conversa = Column(String(30), nullable=False, server_default=text("'idle'"))
+    human_mode = Column(Boolean, nullable=False, server_default=text("false"))
     historico = Column(JSON)
     criada_em = Column(DateTime, server_default=func.now())
     atualizada_em = Column(DateTime, server_default=func.now(), onupdate=func.now())
@@ -131,6 +144,10 @@ class Conversa(Base):
     __table_args__ = (
         UniqueConstraint('tenant_id', 'contato_telefone', name='uq_conversas_tenant_contato'),
         Index('idx_conversas_tenant', 'tenant_id'),
+        CheckConstraint(
+            "estado_conversa IN ('idle', 'coletando_info', 'aguardando_confirmacao', 'escalada', 'encerrada')",
+            name="ck_conversas_estado",
+        ),
     )
 
 
