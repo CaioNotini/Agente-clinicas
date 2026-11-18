@@ -4,10 +4,12 @@ O worker sob teste conecta como worker_jobs (via WORKER_DATABASE_URL, dentro de
 app/jobs/worker.py). Os dados de teste sao criados e removidos com a conta de
 administracao (cnotini). Criterios 1 a 8 da especificacao da tarefa 3.3.
 """
+import itertools
 import uuid
 
 import pytest
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import OperationalError
 
 from app.config import MIGRATION_DATABASE_URL
 from app.jobs.worker import (
@@ -15,6 +17,7 @@ from app.jobs.worker import (
     finalizar_job,
     processar_um,
     reivindicar_job,
+    rodar,
     varrer_orfaos_esgotados,
 )
 
@@ -22,6 +25,10 @@ from app.jobs.worker import (
 engine_admin = create_engine(MIGRATION_DATABASE_URL)
 
 WID = "worker-teste"
+
+# Cada job de mensagem ganha uma conversa propria, para a ordem por conversa
+# (ADR 0005) nao ligar jobs que estes testes tratam como independentes.
+_contatos = itertools.count()
 
 
 def _criar_clinica(tenant_id):
@@ -71,13 +78,20 @@ def _inserir_job(
         "NULL" if locked_at_secs_atras is None
         else f"now() - make_interval(secs => {int(locked_at_secs_atras)})"
     )
+    contato = (
+        f"(00) 90000-{next(_contatos):04d}" if tipo == "PROCESS_INBOUND_MESSAGE" else None
+    )
     with engine_admin.begin() as conexao:
         return conexao.execute(
             text(
-                "INSERT INTO jobs (tenant_id, type, status, attempts, max_attempts, run_at, locked_at, locked_by) "
-                f"VALUES (:t, :tipo, :st, :att, :mx, now(), {locked_at_sql}, :lb) RETURNING id"
+                "INSERT INTO jobs (tenant_id, type, status, contato_telefone, attempts, max_attempts, "
+                "run_at, locked_at, locked_by) "
+                f"VALUES (:t, :tipo, :st, :tel, :att, :mx, now(), {locked_at_sql}, :lb) RETURNING id"
             ),
-            {"t": tenant_id, "tipo": tipo, "st": status, "att": attempts, "mx": max_attempts, "lb": locked_by},
+            {
+                "t": tenant_id, "tipo": tipo, "st": status, "tel": contato,
+                "att": attempts, "mx": max_attempts, "lb": locked_by,
+            },
         ).scalar()
 
 
@@ -228,3 +242,38 @@ def test_worker_com_locked_by_diferente_nao_finaliza(tenant):
     estado = _estado(job_id)
     assert estado.status == "processing"
     assert estado.locked_by == "outro-worker"
+
+
+class _EngineQueFalha:
+    """Engine que falha nas primeiras chamadas e depois repassa ao engine real.
+
+    Simula o banco fora do ar por um momento, sem derrubar o Postgres do teste.
+    """
+
+    def __init__(self, real, falhas):
+        self.real = real
+        self.falhas = falhas
+
+    def begin(self):
+        if self.falhas > 0:
+            self.falhas -= 1
+            raise OperationalError("SELECT 1", {}, Exception("banco fora do ar (simulado)"))
+        return self.real.begin()
+
+
+def test_rodar_sobrevive_a_erro_de_banco(tenant):
+    """Item B4: um erro de banco no laco nao encerra o worker, que segue e processa o job."""
+    job_id = _inserir_job(tenant)
+    engine = _EngineQueFalha(engine_worker, falhas=2)
+
+    rodar(
+        worker_id=WID,
+        processamento=lambda conexao, job: None,
+        engine=engine,
+        intervalo_ocioso=0,
+        intervalo_erro=0,
+        max_iteracoes=3,
+    )
+
+    assert engine.falhas == 0
+    assert _estado(job_id).status == "done"

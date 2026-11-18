@@ -18,15 +18,21 @@ fato, dentro de processar_mensagem. O worker usa worker_jobs apenas para a
 tabela jobs. O filtro explicito de tenant_id e a segunda barreira. Na conexao
 worker_jobs, app.tenant_id e contrato de contexto, nao barreira.
 
+Ordem por conversa (docs/decisions/0005-ordem-por-conversa.md): um job so e
+capturado se nao houver outro job pending ou processing, mais antigo, da mesma
+conversa (tenant_id, contato_telefone). Jobs sem conversa ficam fora da regra.
+
 Pendencia da etapa 6: nao ha backoff. No retry, run_at fica inalterado, entao o
 job volta a ficar elegivel imediatamente.
 """
+import logging
 import time
 import uuid
 from dataclasses import dataclass
 from typing import Callable, Optional
 
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import WORKER_DATABASE_URL
 from app.core.processamento import processar_mensagem
@@ -39,6 +45,11 @@ LIMITE_LOCK_SEGUNDOS = 300
 
 # Tipos de job que este worker sabe processar nesta etapa
 TIPOS_SUPORTADOS = ("PROCESS_INBOUND_MESSAGE",)
+
+# Espera depois de um erro de banco no laco, antes de tentar de novo
+INTERVALO_ERRO_SEGUNDOS = 5.0
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -67,17 +78,29 @@ def reivindicar_job(
     sem janela entre eles, entao dois workers nao pegam o mesmo job. attempts
     incrementa aqui, ao pegar o job, e nao na falha. Um job preso em processing
     alem do limite volta a ser candidato.
+
+    Ordem por conversa: o NOT EXISTS so le, sem travar. Uma linha travada por
+    outro worker e pulada pelo SKIP LOCKED, mas o NOT EXISTS ainda a enxerga
+    como pending, entao o job seguinte da conversa continua bloqueado. Com
+    contato_telefone NULL a comparacao nunca e verdadeira, entao jobs sem
+    conversa nao bloqueiam nem sao bloqueados.
     """
     with engine.begin() as conexao:
         linha = conexao.execute(
             text(
-                "SELECT id, tenant_id, type, payload, attempts, max_attempts "
-                "FROM jobs "
-                "WHERE run_at <= now() AND attempts < max_attempts "
-                "AND (status = 'pending' "
-                "     OR (status = 'processing' AND locked_at < now() - make_interval(secs => :lim))) "
-                "ORDER BY run_at, id "
-                "FOR UPDATE SKIP LOCKED "
+                "SELECT j.id, j.tenant_id, j.type, j.payload, j.attempts, j.max_attempts "
+                "FROM jobs j "
+                "WHERE j.run_at <= now() AND j.attempts < j.max_attempts "
+                "AND (j.status = 'pending' "
+                "     OR (j.status = 'processing' AND j.locked_at < now() - make_interval(secs => :lim))) "
+                "AND NOT EXISTS ("
+                "    SELECT 1 FROM jobs anterior "
+                "    WHERE anterior.tenant_id = j.tenant_id "
+                "    AND anterior.contato_telefone = j.contato_telefone "
+                "    AND anterior.id < j.id "
+                "    AND anterior.status IN ('pending', 'processing')) "
+                "ORDER BY j.run_at, j.id "
+                "FOR UPDATE OF j SKIP LOCKED "
                 "LIMIT 1"
             ),
             {"lim": limite_segundos},
@@ -187,12 +210,28 @@ def rodar(
     limite_segundos: int = LIMITE_LOCK_SEGUNDOS,
     intervalo_ocioso: float = 1.0,
     engine=engine_worker,
+    intervalo_erro: float = INTERVALO_ERRO_SEGUNDOS,
+    max_iteracoes: Optional[int] = None,
 ) -> None:
-    """Laco do worker: varre orfaos esgotados e processa jobs ate ser interrompido."""
+    """Laco do worker: varre orfaos esgotados e processa jobs ate ser interrompido.
+
+    Um erro de banco no laco (conexao caida, por exemplo) nao encerra o worker:
+    o erro e registrado e o laco tenta de novo depois de intervalo_erro. Um job
+    que ficar em processing por causa do erro e recapturado apos o limite de
+    orfao. max_iteracoes limita o laco, para testes. None roda sem fim.
+    """
     worker_id = worker_id or uuid.uuid4().hex
-    while True:
-        varrer_orfaos_esgotados(limite_segundos, engine)
-        job = processar_um(worker_id, processamento, limite_segundos, engine)
+    iteracao = 0
+    while max_iteracoes is None or iteracao < max_iteracoes:
+        iteracao += 1
+        try:
+            varrer_orfaos_esgotados(limite_segundos, engine)
+            job = processar_um(worker_id, processamento, limite_segundos, engine)
+        except SQLAlchemyError as erro:
+            # So o tipo do erro: a mensagem do SQLAlchemy inclui os parametros do SQL
+            logger.warning("erro de banco no laco do worker: %s", type(erro).__name__)
+            time.sleep(intervalo_erro)
+            continue
         if job is None:
             time.sleep(intervalo_ocioso)
 

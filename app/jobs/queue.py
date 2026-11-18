@@ -95,17 +95,24 @@ def gravar_e_enfileirar(mensagem: MensagemEntrada) -> ResultadoEnfileiramento:
             session.commit()
             return ResultadoEnfileiramento(duplicada=True, job_id=None)
 
-        # Mensagem nova: cria o job de processamento, no mesmo tenant
+        # Mensagem nova: cria o job de processamento, no mesmo tenant. A coluna
+        # contato_telefone identifica a conversa para a ordem de captura (ADR 0005).
         payload = json.dumps(
             {"mensagem_id": mensagem.id, "contato_telefone": mensagem.contato_telefone}
         )
         job_id = session.execute(
             text(
-                "INSERT INTO jobs (tenant_id, type, status, payload, run_at, attempts, max_attempts) "
-                "VALUES (:t, :tipo, 'pending', CAST(:payload AS JSON), now(), 0, 3) "
+                "INSERT INTO jobs (tenant_id, type, status, payload, contato_telefone, "
+                "run_at, attempts, max_attempts) "
+                "VALUES (:t, :tipo, 'pending', CAST(:payload AS JSON), :tel, now(), 0, 3) "
                 "RETURNING id"
             ),
-            {"t": mensagem.tenant_id, "tipo": TIPO_JOB_MENSAGEM, "payload": payload},
+            {
+                "t": mensagem.tenant_id,
+                "tipo": TIPO_JOB_MENSAGEM,
+                "payload": payload,
+                "tel": mensagem.contato_telefone,
+            },
         ).scalar()
 
         session.commit()

@@ -30,6 +30,8 @@ TABELAS_TENANT = [
     "regras_agendamento",
     "profissional_servicos",
     "horarios_trabalho",
+    # agendamentos tem FK para profissionais e servicos, entao e apagado antes deles
+    "agendamentos",
     "servicos",
     "profissionais",
     "clinicas",
@@ -48,7 +50,7 @@ def _colunas_minimas(tabela, tenant):
         "servicos": {"nome": "Servico Intruso", "ativo": True},
         "conversas": {"contato_telefone": "(00) 00000-0000", "estado_conversa": "idle", "human_mode": False},
         "pacientes_contatos": {"contato_telefone": "(00) 00000-0000"},
-        "mensagens": {"id": f"intruso-{uuid.uuid4()}", "contato_telefone": "(00) 00000-0000", "conteudo": "x", "direcao": "in"},
+        "mensagens": {"id": f"intruso-{uuid.uuid4()}", "contato_telefone": "(00) 00000-0000", "conteudo": "x", "direcao": "entrada"},
         "jobs": {"type": "SEND_REMINDER", "status": "pending"},
         "log_auditoria": {"acao": "intruso"},
         "consents": {"contato_telefone": "(00) 00000-0000", "tipo": "lembrete", "versao_texto": "v1"},
@@ -57,6 +59,13 @@ def _colunas_minimas(tabela, tenant):
         "profissional_servicos": {"profissional_id": 1, "servico_id": 1},
         "horarios_trabalho": {"profissional_id": 1, "dia_semana": 1, "ativo": True},
         "handoffs": {"conversa_id": 1, "motivo": "urgencia"},
+        # Dados validos (fim > inicio, status valido): o unico erro possivel e o RLS
+        "agendamentos": {
+            "profissional_id": 1, "servico_id": 1,
+            "contato_telefone": "(00) 00000-0000",
+            "inicio": "2027-01-10 10:00:00+00", "fim": "2027-01-10 10:30:00+00",
+            "status": "agendado",
+        },
     }
     valores = {**base, **extras.get(tabela, {})}
     nomes = ", ".join(valores.keys())
@@ -96,6 +105,18 @@ def _semear(conexao, tenant):
         text("INSERT INTO profissional_servicos (tenant_id, profissional_id, servico_id) VALUES (:t, :p, :s)"),
         {"t": str(tenant), "p": profissional, "s": servico},
     )
+    # Um agendamento ativo por tenant, sem sobreposicao (linha unica por tenant)
+    conexao.execute(
+        text(
+            "INSERT INTO agendamentos (tenant_id, profissional_id, servico_id, "
+            "contato_telefone, inicio, fim, status) "
+            "VALUES (:t, :p, :s, :tel, :ini, :fim, 'agendado')"
+        ),
+        {
+            "t": str(tenant), "p": profissional, "s": servico, "tel": TELEFONE,
+            "ini": "2027-01-10 10:00:00+00", "fim": "2027-01-10 10:30:00+00",
+        },
+    )
     conexao.execute(
         text(
             "INSERT INTO regras_agendamento (tenant_id, antecedencia_minima_horas, "
@@ -111,7 +132,7 @@ def _semear(conexao, tenant):
     conexao.execute(
         text(
             "INSERT INTO mensagens (id, tenant_id, contato_telefone, conteudo, direcao) "
-            "VALUES (:id, :t, :tel, 'Mensagem exemplo', 'in')"
+            "VALUES (:id, :t, :tel, 'Mensagem exemplo', 'entrada')"
         ),
         {"id": f"msg-{tenant}", "t": str(tenant), "tel": TELEFONE},
     )
