@@ -129,9 +129,20 @@ Itens B9 a B12 do [plano de 2026-11-18](./diagnosticos/2026-11-18-plano-rodada3.
   - com mensagens `msg-a`, `msg-dedupe-1` e `colisao-x` de outra clínica no banco, os 3 testes de `test_dedupe_mensagens.py` falharam com `ColisaoIdEntreTenants`.
   
   Correção: `tests/concurrency/conftest.py` apaga os jobs `pending` e `processing` antes de cada teste de concorrência, e os ids de mensagem dos testes de dedupe ganharam sufixo aleatório. No mesmo cenário, `tests/concurrency` passou (31 testes). `pytest tests/ -v`: `185 passed`. O README avisa que a suíte esvazia a fila do banco local.
+- **B10, documentos alinhados ao código, 2026-11-18.** Só documentação e comentários. Mudanças:
+  - Q-20 da [arquitetura](./arquitetura.md) registrada como resolvida pela 5.5, porque `agendamentos` já guarda `contato_telefone`.
+  - Q-23 da arquitetura e consequências do [ADR 0004](./decisions/0004-conflito-de-horario.md) deixam de dizer que o código isola a conversão de fuso num único ponto, porque esse ponto não existe.
+  - a docstring de `app/agenda/base.py` deixa de citar uma pendência inexistente de `etapas.md` e passa a citar os erros `23P01` e `40P01`.
+  - [`decisions/README.md`](./decisions/README.md) lista os ADRs.
+  - a regra 18 do `CLAUDE.md` registra a exceção do worker, que usa `worker_jobs` só para a tabela `jobs`, como no ADR 0002.
+  - o registro em `status.md` da 5.5, da 5.1, do desvio das etapas 4 e 5, das contagens de testes e da PK de `mensagens` já tinha sido feito nos blocos anteriores. O ADR 0004 já tinha sido corrigido no bloco 2.
+  - `etapas.md` foi mantido: `tests/unit/` passou a existir, e `app/handoff/` é o destino da 5.4, na etapa ativa.
+  
+  `pytest tests/ -v`: `185 passed`.
 
 ## Bloqueios e pendências
 
+- **Disponibilidade no `AgendaProvider` sem tarefa.** A [arquitetura](./arquitetura.md) prevê disponibilidade, criar e cancelar no `AgendaProvider`, e [`etapas.md`](./etapas.md) não tem tarefa para a disponibilidade (item C3 do plano). Falta o desenvolvedor decidir se ela entra na 5.2 ou na 5.3.
 - **Tradução de `23P01` e `40P01` na tarefa 5.3.** Em 2026-11-18, duas gravações concorrentes do mesmo horário mostraram que a perdedora pode receber `40P01` (deadlock na verificação da constraint), além do `23P01`. O [ADR 0004](./decisions/0004-conflito-de-horario.md) foi revisado em 2026-11-18 para descrever isso. Hoje nenhum dos dois códigos é traduzido. A tradução e o SAVEPOINT continuam planejados para a 5.3 (item C2 do plano).
 
 - **Pendência da etapa 9: conversa depois de uma mensagem morta.** Risco aceito em 2026-11-18 no [ADR 0005](./decisions/0005-ordem-por-conversa.md). Quando um job de mensagem vai para `dead`, as mensagens seguintes da conversa são processadas sem ela, e nada muda na conversa. A etapa 9 é a primeira em que o processamento altera o estado da conversa (tarefa 9.2). A conduta precisa estar decidida e implementada antes de a etapa 9 fechar.

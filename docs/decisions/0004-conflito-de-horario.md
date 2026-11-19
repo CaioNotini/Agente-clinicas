@@ -38,7 +38,7 @@ Uma constraint no banco não depende da ordem de execução nem de a aplicação
 - Planejado para a tarefa 5.3, ainda não implementado: a inserção de agendamento roda dentro de um SAVEPOINT, porque o `23P01` e o `40P01` abortam a transação corrente. Nos dois códigos, o código relê sob RLS: se o conflitante for do mesmo paciente, profissional e início, devolve o existente (idempotência na corrida). Caso contrário, levanta o erro de domínio de horário indisponível.
 - Agendamentos cancelados não entram no conflito, porque a constraint é restrita a `status = 'agendado'`. Remarcar marca o antigo como cancelado antes de criar o novo, na mesma transação.
 - A tabela tem RLS, FORCE e policy `isolamento_tenant`, está em `TABELAS_TENANT` e é coberta pelos testes de isolamento, como exige o CLAUDE.md. A escrita cruzada no teste de isolamento usa dados válidos e exige `match="row-level security"`, para a policy ser a única barreira.
-- O fuso por clínica fica em aberto na seção 13 de [`arquitetura.md`](../arquitetura.md). Enquanto não decidido, o código trabalha com instantes em UTC e isola a conversão de fuso local em um único ponto.
+- O fuso por clínica fica em aberto na seção 13 de [`arquitetura.md`](../arquitetura.md). Enquanto não decidido, o código trabalha com instantes com fuso, gravados em UTC, e `AgendaPropria.criar` rejeita horários sem fuso. Ainda não existe conversão para o fuso local.
 
 ## Status
 

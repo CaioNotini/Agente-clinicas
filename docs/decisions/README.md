@@ -8,6 +8,16 @@ Relaciona-se com: ../estudo.md, ../arquitetura.md, ../status.md
 
 Este diretório registra decisões tomadas durante a implementação que ainda não têm lugar em `estudo.md` ou `arquitetura.md`. Decisões já cobertas pelas tabelas D-xx de `arquitetura.md` não são migradas para aqui.
 
+## Registros
+
+- [0001: Alembic na raiz do repositório](./0001-alembic.md)
+- [0002: Contas de banco](./0002-contas-de-banco.md)
+- [0003: Grafo de transições entre estados da conversa](./0003-grafo-de-transicoes.md)
+- [0004: Conflito de horário de agendamentos](./0004-conflito-de-horario.md)
+- [0005: Ordem de processamento por conversa](./0005-ordem-por-conversa.md)
+- [0006: Provisionamento das roles automatizadas](./0006-provisionamento-de-roles.md)
+- [0007: FKs compostas com tenant_id](./0007-fks-compostas-por-tenant.md)
+
 ## Convenção de nomes
 
 `NNNN-slug.md`, numeração sequencial de 4 dígitos, sem lacunas, sem reuso de número. `slug` em kebab-case, curto, descrevendo o tema (ex.: `0001-alembic.md`).

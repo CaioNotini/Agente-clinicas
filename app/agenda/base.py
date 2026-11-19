@@ -1,14 +1,16 @@
 """Interface AgendaProvider e o contrato de dados dos agendamentos (etapa 5.1).
 
 AgendaProvider e a porta de persistencia da agenda. Nesta etapa expoe apenas as
-operacoes mecanicas criar e cancelar. A disponibilidade fica para uma etapa
-futura (ver docs/etapas.md, pendencia da etapa 5), por isso nao e declarada aqui.
+operacoes mecanicas criar e cancelar. A arquitetura (secao 6) preve tambem a
+disponibilidade, que ainda nao tem tarefa em docs/etapas.md (item C3 do plano de
+2026-11-18, pendente em docs/status.md), por isso nao e declarada aqui.
 
 As operacoes recebem a sessao ja aberta pelo chamador, com app.tenant_id definido
 na transacao. Isso permite que o servico de remarcacao (etapa 5.3) use cancelar e
 criar na mesma transacao. O provider nao abre nem fecha transacao, nao aplica
-regras de negocio (antecedencia, janela, duplicidade, conflito) e nao traduz o
-erro 23P01: isso e responsabilidade das regras (etapa 5.2) e do servico (5.3).
+regras de negocio (antecedencia, janela, duplicidade, conflito) e nao traduz os
+erros 23P01 e 40P01 do conflito (ADR 0004): isso e responsabilidade das regras
+(etapa 5.2) e do servico (5.3).
 
 Novos agendamentos nascem com status 'agendado'. O proprio insert fixa o
 tenant_id a partir de current_setting('app.tenant_id'), entao uma sessao nunca
