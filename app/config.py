@@ -1,7 +1,7 @@
 # Ponto único de configuração: carrega o .env e monta as duas URLs do banco
 import os
 from pathlib import Path
-from urllib.parse import quote_plus
+from urllib.parse import quote
 
 from dotenv import load_dotenv
 
@@ -29,7 +29,9 @@ _servidor_e_banco = (
 
 
 def _monta_url(usuario: str, senha: str) -> str:
-    return f"postgresql://{usuario}:{quote_plus(senha)}@{_servidor_e_banco}"
+    # quote com safe="" codifica todo caractere especial, inclusive o espaco como %20.
+    # quote_plus trocava o espaco por +, que o SQLAlchemy nao desfaz na leitura.
+    return f"postgresql://{usuario}:{quote(senha, safe='')}@{_servidor_e_banco}"
 
 
 # Conta da aplicação: sem superusuário, sujeita ao RLS

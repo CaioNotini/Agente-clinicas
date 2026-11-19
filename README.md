@@ -138,6 +138,8 @@ Todas são obrigatórias. O `app/config.py` para com erro se faltar alguma. Os e
 | `WORKER_DB_USER`     | Conta do worker de jobs. Precisa ser exatamente `worker_jobs`                  | `worker_jobs`              |
 | `WORKER_DB_PASSWORD` | Senha de `worker_jobs`, aplicada por `scripts/definir_senhas.py`               | `senha-ficticia-worker`    |
 
+As senhas podem ter qualquer caractere, inclusive espaço. No `.env`, coloque entre aspas simples a senha que tiver `$` ou `#`, como `DB_PASSWORD='abc$def'`. Sem as aspas, o Docker Compose lê `$def` como variável, e um `#` depois de espaço vira comentário.
+
 Os nomes `app_clinicas` e `worker_jobs` são os das roles criadas nas migrations. O script de senhas recusa outros valores. Detalhes no [ADR 0002](docs/decisions/0002-contas-de-banco.md) e no [ADR 0006](docs/decisions/0006-provisionamento-de-roles.md).
 
 ## Suíte de avaliação
