@@ -37,6 +37,10 @@ TABELAS_TENANT = [
     "clinicas",
 ]
 
+# Expressão esperada em USING e WITH CHECK da policy isolamento_tenant, como o
+# Postgres a devolve em pg_policies
+EXPRESSAO_ISOLAMENTO = "(tenant_id = (current_setting('app.tenant_id'::text))::uuid)"
+
 # Telefone fictício usado em todas as linhas de contato
 TELEFONE = "(00) 00000-0000"
 
@@ -257,3 +261,64 @@ def test_alteracao_e_exclusao_de_outro_tenant_nao_afetam_linhas(tabela, tenants)
         transacao.rollback()
     assert atualizadas == 0
     assert apagadas == 0
+
+def _problemas_de_cobertura_rls():
+    """Confere no catálogo cada tabela de public com coluna tenant_id.
+
+    Lê o catálogo com app_clinicas, a mesma conta dos demais testes de isolamento.
+    Devolve a lista de problemas encontrados, vazia quando tudo está coberto.
+    """
+    with engine_app.connect() as conexao:
+        tabelas = conexao.execute(
+            text(
+                "SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity "
+                "FROM pg_class c "
+                "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                "JOIN pg_attribute a ON a.attrelid = c.oid "
+                "WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') "
+                "AND a.attname = 'tenant_id' AND NOT a.attisdropped "
+                "ORDER BY c.relname"
+            )
+        ).fetchall()
+        policies = conexao.execute(
+            text(
+                "SELECT tablename, policyname, permissive, cmd, qual, with_check "
+                "FROM pg_policies WHERE schemaname = 'public'"
+            )
+        ).fetchall()
+
+    problemas = []
+    nomes_no_catalogo = {tabela.relname for tabela in tabelas}
+    for tabela in tabelas:
+        nome = tabela.relname
+        if not tabela.relrowsecurity:
+            problemas.append(f"{nome}: RLS desligado")
+        if not tabela.relforcerowsecurity:
+            problemas.append(f"{nome}: sem FORCE ROW LEVEL SECURITY")
+        if nome not in TABELAS_TENANT:
+            problemas.append(f"{nome}: fora de TABELAS_TENANT")
+        da_tabela = [p for p in policies if p.tablename == nome]
+        isolamento = [p for p in da_tabela if p.policyname == "isolamento_tenant"]
+        if not isolamento:
+            problemas.append(f"{nome}: sem policy isolamento_tenant")
+            continue
+        policy = isolamento[0]
+        if policy.cmd != "ALL":
+            problemas.append(f"{nome}: isolamento_tenant não vale para todos os comandos")
+        if policy.qual != EXPRESSAO_ISOLAMENTO:
+            problemas.append(f"{nome}: USING inesperado em isolamento_tenant")
+        if policy.with_check != EXPRESSAO_ISOLAMENTO:
+            problemas.append(f"{nome}: WITH CHECK inesperado em isolamento_tenant")
+        # Policies permissivas se somam por OR: outra policy alargaria o acesso
+        permissivas = [p for p in da_tabela if p.permissive == "PERMISSIVE"]
+        if len(permissivas) != 1:
+            problemas.append(f"{nome}: {len(permissivas)} policies permissivas, esperada 1")
+    for nome in TABELAS_TENANT:
+        if nome not in nomes_no_catalogo:
+            problemas.append(f"{nome}: está em TABELAS_TENANT e não existe com tenant_id")
+    return problemas
+
+
+def test_toda_tabela_com_tenant_id_esta_coberta_pelo_rls():
+    """Regra 20 do CLAUDE.md, verificada pelo catálogo e não por uma lista manual."""
+    assert _problemas_de_cobertura_rls() == []

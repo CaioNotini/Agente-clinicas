@@ -107,6 +107,10 @@ Antes de qualquer correção, os testes novos rodaram contra o código atual: 19
   - o mesmo caso numa sessão sem RLS, a conta de administração com `app.tenant_id` de A, levanta e não altera a linha. Falhava antes. É o teste que prova a segunda barreira.
 - **B6, `criar` valida fuso e intervalo, verificado em 2026-11-18.** `criar` levanta `ValueError` sem ir ao banco quando `inicio` ou `fim` não têm fuso ou quando `fim <= inicio`. Os 5 casos usam uma sessão falsa que falha se for usada. Antes, os 5 iam ao banco. Controle: um horário com fuso -03:00 é aceito e gravado como o mesmo instante em UTC. `pytest tests/ -v`: só falham os 12 testes de A1, ainda não implementado.
 - **B7, testes da constraint EXCLUDE, verificado em 2026-11-18.** Só testes, sem mudança de código. Cobrem sobreposição rejeitada com `23P01`, horários adjacentes aceitos, agendamento cancelado sem conflito, o mesmo horário com outro profissional e em outra clínica aceitos, e duas gravações concorrentes do mesmo horário, com só uma aceita (`tests/concurrency/test_conflito_agendamento.py`, estável em 20 de 20 execuções). Todos passavam antes, porque a constraint já existe. Controle: sem a `ex_agendamentos_conflito`, falham a sobreposição e a concorrência (duas gravações aceitas). A constraint foi recriada igual à original, conferida em `pg_get_constraintdef`.
+- **B8, cobertura do RLS pelo catálogo, verificado em 2026-11-18.** `test_toda_tabela_com_tenant_id_esta_coberta_pelo_rls` lê o catálogo com `app_clinicas`. Para cada tabela de `public` com coluna `tenant_id`, confere RLS, FORCE, a presença em `TABELAS_TENANT` e a policy `isolamento_tenant` para todos os comandos, com o USING e o WITH CHECK esperados. Também confere que essa é a única policy permissiva da tabela e que toda entrada de `TABELAS_TENANT` existe. Passava antes, porque as 15 tabelas estão cobertas. Controles, todos removidos depois:
+  - uma tabela com `tenant_id` sem RLS fez o teste falhar.
+  - a mesma tabela com RLS, FORCE e uma `isolamento_tenant` com `USING (true)` também.
+  - uma policy permissiva extra em `servicos` também.
 
 ## Bloqueios e pendências
 
