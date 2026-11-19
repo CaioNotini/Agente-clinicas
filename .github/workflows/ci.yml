@@ -95,14 +95,12 @@ jobs:
         run: |
           pylint app/ --disable=all --enable=E,F
 
-      # Format check com black
+      # Formatacao com black: codigo fora do padrao reprova a CI
       - name: Check formatting with black
         run: |
-          black --check app/ || true
-        continue-on-error: true
+          black --check app/
 
-      # Import sorting com isort
+      # Ordem dos imports com isort, no perfil do black para os dois nao conflitarem
       - name: Check import sorting with isort
         run: |
-          isort --check-only app/ || true
-        continue-on-error: true
+          isort --profile black --check-only app/

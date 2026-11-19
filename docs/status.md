@@ -92,6 +92,7 @@ Itens do [plano de 2026-11-18](./diagnosticos/2026-11-18-plano-rodada3.md), feit
   
   A pipeline no GitHub ainda não rodou com essas mudanças.
 - **B2, README com setup do zero, 2026-11-18.** O [`README.md`](../README.md) tem as seções de setup, execução, estrutura, ADRs e variáveis de ambiente, mais as seções das etapas 10 e 12 marcadas para preencher. O [`.env.example`](../.env.example) tem valores fictícios comentados. `pytest tests/ -v`: `150 passed`. A verificação a partir de um clone limpo fica registrada no fim do bloco.
+- **Formatação e CI de estilo, 2026-11-18.** O commit `4c90e91` só reformata `app/` com isort (perfil `black`) e black. A AST de cada arquivo ficou igual, exceto a ordem dos imports em `agenda_propria.py` e `models.py`, que têm os mesmos nomes importados. Esse commit está em [`.git-blame-ignore-revs`](../.git-blame-ignore-revs). black e isort passam a reprovar a CI, e os dois falharam num controle com um arquivo fora do padrão. `pytest tests/ -v`: `150 passed` antes e depois da formatação.
 
 ## Bloqueios e pendências
 
