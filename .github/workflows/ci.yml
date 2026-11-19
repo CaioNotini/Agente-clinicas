@@ -53,10 +53,24 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
 
-      # Rodar migrations (usa DB_* do env do job)
-      - name: Run Alembic migrations
+      # Ciclo de migrations: cada uma sobe, desce e sobe de novo (usa DB_* do env do job)
+      - name: Run Alembic migrations (upgrade, downgrade base, upgrade)
         run: |
           alembic upgrade head
+          alembic downgrade base
+          alembic upgrade head
+
+      # Models e schema iguais depois do ciclo
+      - name: Alembic check
+        run: |
+          alembic check
+
+      # Falha se alguma tabela ficar sem chave primaria
+      - name: Verificar chaves primarias
+        env:
+          PGPASSWORD: ${{ secrets.DB_PASSWORD }}
+        run: |
+          psql -X -q -v ON_ERROR_STOP=1 -h localhost -p 5434 -U "${{ secrets.DB_USER }}" -d agente_estudo -f scripts/verificar_pks.sql
 
       # Senhas de app_clinicas e worker_jobs a partir dos secrets (ADR 0006)
       - name: Definir senhas das roles automatizadas
@@ -76,11 +90,10 @@ jobs:
           fail_ci_if_error: false
         continue-on-error: true
 
-      # Lint com pylint
+      # Lint com pylint: erros (E) e fatais (F) reprovam a CI
       - name: Lint with pylint
         run: |
-          pylint app/ --disable=all --enable=E,F || true
-        continue-on-error: true
+          pylint app/ --disable=all --enable=E,F
 
       # Format check com black
       - name: Check formatting with black

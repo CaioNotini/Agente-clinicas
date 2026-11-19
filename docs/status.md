@@ -84,6 +84,13 @@ Itens do [plano de 2026-11-18](./diagnosticos/2026-11-18-plano-rodada3.md), feit
 - **Senhas das roles automatizadas, verificado em 2026-11-18.** [`scripts/definir_senhas.py`](../scripts/definir_senhas.py) aplica as senhas de `app_clinicas` e `worker_jobs`, chamado pela CI e pelo setup local. Decisão no [ADR 0006](./decisions/0006-provisionamento-de-roles.md). `tests/integration/test_senhas_roles.py`, 4 testes, falhavam antes do script. `pytest tests/ -v`: `148 passed`. A CI no GitHub ainda não rodou com o passo novo.
 - **B3, `CREATE ROLE` idempotente, verificado em 2026-11-18.** As migrations `e4ffcb741dc3` e `c77398abee4a` só criam a role se ela não existir ([ADR 0006](./decisions/0006-provisionamento-de-roles.md)). `test_upgrade_head_num_segundo_banco_do_mesmo_cluster` falhava antes com `role "worker_jobs" already exists`. `pytest tests/ -v`: `149 passed`.
 - **A6, downgrades de `mensagens`, verificado em 2026-11-18.** A cadeia foi mantida. A docstring da `1bc74598f301` foi corrigida. O downgrade dela recria a PK `pk_mensagens`, que era o estado original, e o da `7e9ab495716d` remove a `mensagens_pkey`. `test_downgrade_de_mensagens_volta_ao_estado_original` sobe até o head, desce até a `9d01c00e9d65` (sem PK), desce até a `c77398abee4a` (só `pk_mensagens`) e sobe de novo. Antes falhava, com a `mensagens_pkey` restando no primeiro downgrade. `pytest tests/ -v`: `150 passed`.
+- **B1, CI com ciclo de migrations, verificado localmente em 2026-11-18.** O [`ci.yml`](../.github/workflows/ci.yml) roda `upgrade head`, `downgrade base`, `upgrade head`, `alembic check` e [`scripts/verificar_pks.sql`](../scripts/verificar_pks.sql), antes do script de senhas e do pytest. O pylint com `E` e `F` passa a reprovar a CI. Verificações feitas no banco local:
+  - o ciclo passou e o `alembic check` não detectou diferença.
+  - a consulta de PK passou no head e falhou em dois controles: uma tabela criada sem PK e o estado da `9d01c00e9d65`, sem PK em `mensagens`, que é o erro da seção 0 do plano.
+  - o pylint passou e falhou num controle com variável indefinida. Os 18 `E1102` de `func.now()` são um falso positivo e foram desligados só em `app/db/models.py`.
+  - depois do ciclo e do script de senhas, `pytest tests/ -v`: `150 passed`.
+  
+  A pipeline no GitHub ainda não rodou com essas mudanças.
 
 ## Bloqueios e pendências
 

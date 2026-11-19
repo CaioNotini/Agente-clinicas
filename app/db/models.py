@@ -2,6 +2,10 @@
 app/db/models.py
 Modelos SQLAlchemy — todas as tabelas
 """
+# func.now() e gerado dinamicamente pelo SQLAlchemy, e o pylint o acusa como
+# not-callable (E1102) por engano. Desligado so neste arquivo, para a regra
+# continuar valendo no resto de app/.
+# pylint: disable=not-callable
 
 from sqlalchemy import (
     Column, Integer, String, DateTime, JSON, Boolean,
