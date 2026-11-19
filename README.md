@@ -78,7 +78,7 @@ Os comandos abaixo rodam na raiz do repositório. Onde o comando muda entre sist
 
 ## Como rodar
 
-**Testes.** `pytest` roda a suíte inteira contra o banco do Docker. Para um diretório só, use `pytest tests/isolation`.
+**Testes.** `pytest` roda a suíte inteira contra o banco do Docker. Para um diretório só, use `pytest tests/isolation`. Os testes de `tests/concurrency/` apagam os jobs `pending` e `processing` do banco antes de cada teste, então um job enfileirado à mão pelo CLI some quando a suíte roda.
 
 **Saúde da API.** A API tem só a rota `/health`, que responde 200 quando o banco responde e 503 quando não responde.
 

@@ -21,6 +21,12 @@ engine_admin = create_engine(MIGRATION_DATABASE_URL)
 TELEFONE = "(00) 00000-0000"
 
 
+def _id_unico(prefixo):
+    """Id de mensagem com sufixo aleatorio. mensagens.id e PK global, entre todas
+    as clinicas, entao um id fixo colidiria com dados deixados por outra execucao."""
+    return f"{prefixo}-{uuid.uuid4().hex}"
+
+
 @pytest.fixture
 def tenant():
     """Cria uma clinica e remove tudo o que o teste gravou ao final."""
@@ -72,7 +78,7 @@ def _contar(tenant_id):
 
 
 def test_mensagem_duplicada_nao_gera_segundo_job(tenant):
-    msg = MensagemEntrada(id="msg-dedupe-1", tenant_id=tenant, contato_telefone=TELEFONE, conteudo="Oi")
+    msg = MensagemEntrada(id=_id_unico("msg-dedupe"), tenant_id=tenant, contato_telefone=TELEFONE, conteudo="Oi")
 
     # Primeira vez: grava a mensagem e cria o job
     primeiro = gravar_e_enfileirar(msg)
@@ -89,8 +95,8 @@ def test_mensagem_duplicada_nao_gera_segundo_job(tenant):
 
 
 def test_mensagem_com_id_diferente_gera_novo_job(tenant):
-    primeira = MensagemEntrada(id="msg-a", tenant_id=tenant, contato_telefone=TELEFONE, conteudo="primeira")
-    segunda = MensagemEntrada(id="msg-b", tenant_id=tenant, contato_telefone=TELEFONE, conteudo="segunda")
+    primeira = MensagemEntrada(id=_id_unico("msg-a"), tenant_id=tenant, contato_telefone=TELEFONE, conteudo="primeira")
+    segunda = MensagemEntrada(id=_id_unico("msg-b"), tenant_id=tenant, contato_telefone=TELEFONE, conteudo="segunda")
 
     r1 = gravar_e_enfileirar(primeira)
     r2 = gravar_e_enfileirar(segunda)
@@ -111,12 +117,13 @@ def test_mesmo_id_em_outro_tenant_levanta_colisao(dois_tenants):
     """
     tenant_a, tenant_b = dois_tenants
 
-    de_a = MensagemEntrada(id="colisao-x", tenant_id=tenant_a, contato_telefone=TELEFONE, conteudo="de A")
+    id_compartilhado = _id_unico("colisao")
+    de_a = MensagemEntrada(id=id_compartilhado, tenant_id=tenant_a, contato_telefone=TELEFONE, conteudo="de A")
     resultado_a = gravar_e_enfileirar(de_a)
     assert resultado_a.duplicada is False
     assert resultado_a.job_id is not None
 
-    de_b = MensagemEntrada(id="colisao-x", tenant_id=tenant_b, contato_telefone=TELEFONE, conteudo="de B")
+    de_b = MensagemEntrada(id=id_compartilhado, tenant_id=tenant_b, contato_telefone=TELEFONE, conteudo="de B")
     with pytest.raises(ColisaoIdEntreTenants):
         gravar_e_enfileirar(de_b)
 

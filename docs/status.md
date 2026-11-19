@@ -120,6 +120,16 @@ Antes de qualquer correção, os testes novos rodaram contra o código atual: 19
   - `test_upgrade_head_num_segundo_banco_do_mesmo_cluster` passa a ler o head do Alembic, em vez de fixar a revisão.
   - `pytest tests/ -v`: `185 passed`.
 
+## Bloco 3 da rodada 3
+
+Itens B9 a B12 do [plano de 2026-11-18](./diagnosticos/2026-11-18-plano-rodada3.md), na `main`, um commit por item.
+
+- **B9, testes independentes da fila global, verificado em 2026-11-18.** Prova do problema:
+  - com um job enfileirado pelo CLI numa clínica avulsa, `test_mensagens_seguidas_serializam_sem_duplicar` falhou. Os testes seguintes passaram porque o primeiro teste consumiu o job avulso.
+  - com mensagens `msg-a`, `msg-dedupe-1` e `colisao-x` de outra clínica no banco, os 3 testes de `test_dedupe_mensagens.py` falharam com `ColisaoIdEntreTenants`.
+  
+  Correção: `tests/concurrency/conftest.py` apaga os jobs `pending` e `processing` antes de cada teste de concorrência, e os ids de mensagem dos testes de dedupe ganharam sufixo aleatório. No mesmo cenário, `tests/concurrency` passou (31 testes). `pytest tests/ -v`: `185 passed`. O README avisa que a suíte esvazia a fila do banco local.
+
 ## Bloqueios e pendências
 
 - **Tradução de `23P01` e `40P01` na tarefa 5.3.** Em 2026-11-18, duas gravações concorrentes do mesmo horário mostraram que a perdedora pode receber `40P01` (deadlock na verificação da constraint), além do `23P01`. O [ADR 0004](./decisions/0004-conflito-de-horario.md) foi revisado em 2026-11-18 para descrever isso. Hoje nenhum dos dois códigos é traduzido. A tradução e o SAVEPOINT continuam planejados para a 5.3 (item C2 do plano).
