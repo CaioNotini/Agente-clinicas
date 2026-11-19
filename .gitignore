@@ -57,5 +57,4 @@ postgres_data/
 *.sqlite
 
 # Docker
-.dockerignore
 docs/glossario.md
