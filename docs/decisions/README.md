@@ -17,6 +17,7 @@ Este diretório registra decisões tomadas durante a implementação que ainda n
 - [0005: Ordem de processamento por conversa](./0005-ordem-por-conversa.md)
 - [0006: Provisionamento das roles automatizadas](./0006-provisionamento-de-roles.md)
 - [0007: FKs compostas com tenant_id](./0007-fks-compostas-por-tenant.md)
+- [0008: Conclusão atômica do job](./0008-conclusao-atomica-do-job.md)
 
 ## Convenção de nomes
 

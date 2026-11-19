@@ -14,6 +14,8 @@ Relaciona-se com: ../arquitetura.md (seção 5, quem usa qual credencial), ../et
 
 2026-11-18. As senhas de `app_clinicas` e `worker_jobs` passam a ser aplicadas por um script único, chamado pela CI e pelo setup local, conforme o [ADR 0006](./0006-provisionamento-de-roles.md).
 
+2026-11-18. A conclusão bem-sucedida de um job passa a ser feita pela sessão `app_clinicas` do processamento, na mesma transação dos efeitos, conforme o [ADR 0008](./0008-conclusao-atomica-do-job.md). A captura e o caminho de falha continuam com `worker_jobs`.
+
 ## Status
 
 Aceita.
