@@ -10,13 +10,13 @@ Relaciona-se com: etapas.md, estudo.md, arquitetura.md, principios.md, decisions
 
 ## Etapa ativa
 
+**Etapa 5, ativa desde 2026-11-18**, por decisão do desenvolvedor. Agendamento e handoff determinísticos. Critérios de pronto em [`etapas.md`](./etapas.md). As tarefas 5.5 (tabela `agendamentos`) e 5.1 (`AgendaProvider` e `AgendaPropria`) foram feitas na branch `wip/agendamentos` antes de a etapa 4 fechar, contra a regra de dependência de [`etapas.md`](./etapas.md). Em 2026-11-18 os itens A1, B5, B6, B7 e B8 do plano reforçaram e testaram essas tarefas (seção "Bloco 2 da rodada 3"). Faltam as tarefas 5.2, 5.3 e 5.4. O item A3 do plano precisa estar resolvido antes da 5.3.
+
 **Etapa 4, concluída em 2026-11-18.** Reaberta em 2026-11-15 e fechada por decisão do desenvolvedor em 2026-11-18, depois da garantia de ordem. Tarefas 4.1 (máquina de estados e transições determinísticas), 4.2 (lock por conversa com `SELECT ... FOR UPDATE` e `lock_timeout`), 4.3 (teste de mensagens seguidas da mesma conversa) e 4.4 (escrita de clínica por sessão `app_clinicas` com RLS, ligada ao worker pelo ponto de injeção `processamento=`) implementadas em 2026-10-29, com testes passando. Evidência na seção "Evidências verificadas na etapa 4".
 
 A etapa foi reaberta porque o critério de pronto em [`etapas.md`](./etapas.md) exige que mensagens seguidas não gerem processamento fora de ordem. O lock por conversa não garante a ordem de chegada entre workers. A decisão de 2026-11-15 foi manter o critério. A garantia de ordem é a tarefa em aberto.
 
 A abordagem da garantia de ordem está no [ADR 0005](./decisions/0005-ordem-por-conversa.md), aceito em 2026-11-18. Ela foi implementada em 2026-11-18 com testes passando (seção "Verificado em 2026-11-18"). Para a conversa depois de uma mensagem morta, o desenvolvedor escolheu aceitar o risco até a etapa 9 (ver "Bloqueios e pendências").
-
-**Etapa 5** (agendamento e handoff determinísticos), parada. As tarefas 5.5 (tabela `agendamentos`) e 5.1 (`AgendaProvider` e `AgendaPropria`) foram feitas na branch `wip/agendamentos` antes de a etapa 4 fechar, contra a regra de dependência de [`etapas.md`](./etapas.md). Em 2026-11-18 os itens A1, B5, B6, B7 e B8 do plano reforçaram e testaram essas tarefas (seção "Bloco 2 da rodada 3"). Decisão de 2026-11-18: a etapa 5 fica parada até a etapa 4 cumprir o critério de pronto. A etapa 4 fechou em 2026-11-18. A retomada da etapa 5 aguarda decisão do desenvolvedor. Critérios de pronto em [`etapas.md`](./etapas.md).
 
 ## Estado das etapas (0 a 21)
 
@@ -29,7 +29,7 @@ Critérios de pronto de cada etapa ficam em [`etapas.md`](./etapas.md). Esta tab
 | 2     | concluída                                        | Schema multi-tenant, RLS, FORCE e policy de isolamento, testado com `app_clinicas` |
 | 3     | concluída                                        | Canal CLI, fila de jobs e worker com `SKIP LOCKED`, exercitado ao vivo             |
 | 4     | concluída                                        | Ver seção "Evidências verificadas na etapa 4"                                      |
-| 5     | parada, 5.5 e 5.1 feitas antes da etapa 4 fechar | testes de 5.5 e 5.1 na seção "Bloco 2 da rodada 3"                                 |
+| 5     | ativa, 5.5 e 5.1 feitas, faltam 5.2 a 5.4        | testes de 5.5 e 5.1 na seção "Bloco 2 da rodada 3"                                 |
 | 6     | não iniciada                                     | —                                                                                  |
 | 7     | não iniciada                                     | —                                                                                  |
 | 8     | não iniciada                                     | —                                                                                  |
@@ -125,7 +125,7 @@ Antes de qualquer correção, os testes novos rodaram contra o código atual: 19
 - **Tradução de `23P01` e `40P01` na tarefa 5.3.** Em 2026-11-18, duas gravações concorrentes do mesmo horário mostraram que a perdedora pode receber `40P01` (deadlock na verificação da constraint), além do `23P01`. O [ADR 0004](./decisions/0004-conflito-de-horario.md) foi revisado em 2026-11-18 para descrever isso. Hoje nenhum dos dois códigos é traduzido. A tradução e o SAVEPOINT continuam planejados para a 5.3 (item C2 do plano).
 
 - **Pendência da etapa 9: conversa depois de uma mensagem morta.** Risco aceito em 2026-11-18 no [ADR 0005](./decisions/0005-ordem-por-conversa.md). Quando um job de mensagem vai para `dead`, as mensagens seguintes da conversa são processadas sem ela, e nada muda na conversa. A etapa 9 é a primeira em que o processamento altera o estado da conversa (tarefa 9.2). A conduta precisa estar decidida e implementada antes de a etapa 9 fechar.
-- **Desvio na ordem das etapas 4 e 5.** As tarefas 5.5 e 5.1 foram feitas na branch `wip/agendamentos` com a etapa 4 ainda parcial. Decisão de 2026-11-18: a etapa 5 fica parada até a etapa 4 fechar. A etapa 4 fechou em 2026-11-18, e a retomada da etapa 5 aguarda decisão do desenvolvedor.
+- **Desvio na ordem das etapas 4 e 5.** As tarefas 5.5 e 5.1 foram feitas na branch `wip/agendamentos` com a etapa 4 ainda parcial. Decisão de 2026-11-18: a etapa 5 fica parada até a etapa 4 fechar. A etapa 4 fechou em 2026-11-18, e a etapa 5 voltou a ser a ativa no mesmo dia, por decisão do desenvolvedor.
 - **Alterações de 2026-11-15 sem validação contra o banco.** Foram quatro alterações:
   - o laço `rodar()` de `app/jobs/worker.py` passou a usar `processar_mensagem` como processamento padrão.
   - a migration `1bc74598f301` remove a constraint `pk_mensagens` de `mensagens`, tratando-a como UNIQUE redundante. Correção de 2026-11-18: `pk_mensagens` era a única chave primária, e a migration a remove. A chave volta com a `7e9ab495716d`. Causa na seção 0 de [`diagnosticos/2026-11-18-plano-rodada3.md`](./diagnosticos/2026-11-18-plano-rodada3.md).
@@ -134,12 +134,12 @@ Antes de qualquer correção, os testes novos rodaram contra o código atual: 19
 - **O que foi verificado em 2026-11-15, sem banco.** A máquina usada não tinha Docker nem banco no ar. Com variáveis fictícias: os módulos importam sem ciclo, o padrão de `rodar()` é `processar_mensagem`, `alembic heads` mostra `1bc74598f301` como head único, `test_estados.py` passa (30 testes) e o teste de `/health` com banco fora passa (503). Os dois testes de `/health` com banco no ar falharam por falta de banco, como esperado.
 - **O que falta validar.** Em 2026-11-18, com o banco do Docker ligado, `alembic upgrade head` e `pytest tests/ -v` completo passaram (144 testes). O ciclo de sobe, desce e sobe da migration `1bc74598f301` foi verificado em 2026-11-18 (item A6 do bloco 1). Ainda falta a pipeline do CI no GitHub.
 - Os grants de `worker_jobs` no banco são mais amplos que o uso feito pelo código. A decisão de 2026-11-15 foi documentar os grants reais no [ADR 0002](./decisions/0002-contas-de-banco.md), sem alterar o banco.
-- Os testes de `tests/concurrency/test_estados.py` são unitários e não tocam no banco. Ficaram em `tests/concurrency/` porque a etapa 4 só lista esse diretório em [`etapas.md`](./etapas.md). A decisão de movê-los para `tests/unit/` está pendente.
+- Os testes de `test_estados.py` são unitários e não tocam no banco. Em 2026-11-18 foram movidos de `tests/concurrency/` para `tests/unit/`, por decisão do desenvolvedor.
 - **Desvio conhecido na ordem das etapas.** As etapas 1 a 4 avançaram com a etapa 0 ainda aberta, contra a regra de dependência de [`etapas.md`](./etapas.md). A etapa 0 segue pendente do conteúdo de [`pergs_bloqueadas.md`](./fake_clinic/pergs_bloqueadas.md).
 - **Critérios de pronto aprovados.** Em 2026-11-15 foram aprovados os critérios de pronto de [`etapas.md`](./etapas.md) como estão, e o aviso de rascunho foi removido.
 - **Questões que bloqueiam a especificação da etapa 5.** Q-20 a Q-24, na seção 13 de [`arquitetura.md`](./arquitetura.md).
+- **Q-03.** Em 2026-11-18 o prazo passou a ser só a etapa 15, a migração para o Supabase, porque o ambiente local não tem pooler.
 - **Ambiguidades de documentação ainda sem decisão.**
-  - Q-03 pede resposta na etapa 4 e na etapa 15, mas o ambiente local não tem pooler, então a parte da etapa 4 não tem como ser respondida.
   - [`FAQ.md`](./fake_clinic/FAQ.md) cita [`pergs_bloqueadas.md`](./fake_clinic/pergs_bloqueadas.md) como fonte de duas perguntas administrativas marcadas como bloqueado, e esse arquivo só tem perguntas clínicas e de urgência.
   - [`principios.md`](./principios.md) cita "D10" na verificação do princípio 6, e não existe decisão com esse identificador ligada ao tema.
   - [`estudo.md`](./estudo.md), seção 4, cita um "endpoint de chat de teste" que nenhuma etapa de [`etapas.md`](./etapas.md) prevê.

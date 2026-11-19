@@ -4,10 +4,8 @@ Verifica o grafo de transicoes de app/core/estados.py contra o grafo aprovado em
 docs/decisions/0003-grafo-de-transicoes.md: toda transicao valida e aceita, e
 toda transicao invalida e rejeitada com TransicaoInvalida.
 
-Observacao de escopo: estes testes sao unitarios (nao tocam no banco), mas
-etapas.md autoriza para a etapa 4 apenas tests/concurrency/. Ficam aqui para nao
-editar um diretorio fora da lista da etapa. Registrado como pendencia em
-docs/status.md.
+Testes unitarios: nao tocam no banco. Movidos de tests/concurrency/ para
+tests/unit/ por decisao do desenvolvedor em 2026-11-18.
 """
 import itertools
 
