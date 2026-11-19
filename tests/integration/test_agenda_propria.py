@@ -12,6 +12,8 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import sessionmaker
 
 from app.config import MIGRATION_DATABASE_URL
 from app.db.database import SessionLocal
@@ -29,24 +31,30 @@ engine_admin = create_engine(MIGRATION_DATABASE_URL)
 TELEFONE = "(00) 00000-0000"
 
 
-@pytest.fixture
-def cenario():
-    """Cria uma clinica com um profissional e um servico, e remove tudo ao final."""
+def _inserir_profissional(tenant, nome="Prof 5.1"):
+    with engine_admin.begin() as conexao:
+        return conexao.execute(
+            text("INSERT INTO profissionais (tenant_id, nome, ativo) VALUES (:t, :n, true) RETURNING id"),
+            {"t": str(tenant), "n": nome},
+        ).scalar()
+
+
+def _criar_cenario():
+    """Cria uma clinica com um profissional e um servico."""
     tenant = uuid.uuid4()
     with engine_admin.begin() as conexao:
         conexao.execute(
             text("INSERT INTO clinicas (tenant_id, nome, ativo) VALUES (:t, 'Clinica 5.1', true)"),
             {"t": str(tenant)},
         )
-        profissional = conexao.execute(
-            text("INSERT INTO profissionais (tenant_id, nome, ativo) VALUES (:t, 'Prof 5.1', true) RETURNING id"),
-            {"t": str(tenant)},
-        ).scalar()
         servico = conexao.execute(
             text("INSERT INTO servicos (tenant_id, nome, ativo) VALUES (:t, 'Serv 5.1', true) RETURNING id"),
             {"t": str(tenant)},
         ).scalar()
-    yield tenant, profissional, servico
+    return tenant, _inserir_profissional(tenant), servico
+
+
+def _remover_cenario(tenant):
     # Limpeza: agendamentos antes das tabelas de apoio por causa das FKs
     with engine_admin.begin() as conexao:
         for tabela in ("agendamentos", "servicos", "profissionais", "clinicas"):
@@ -54,6 +62,22 @@ def cenario():
                 text(f"DELETE FROM {tabela} WHERE tenant_id = :t"),
                 {"t": str(tenant)},
             )
+
+
+@pytest.fixture
+def cenario():
+    """Cria uma clinica com um profissional e um servico, e remove tudo ao final."""
+    dados = _criar_cenario()
+    yield dados
+    _remover_cenario(dados[0])
+
+
+@pytest.fixture
+def outro_cenario():
+    """Segunda clinica, independente da primeira, para os casos entre clinicas."""
+    dados = _criar_cenario()
+    yield dados
+    _remover_cenario(dados[0])
 
 
 @contextmanager
@@ -152,3 +176,81 @@ def test_cancelar_id_inexistente_levanta(cenario):
     with sessao_tenant(tenant) as session:
         with pytest.raises(AgendamentoNaoEncontrado):
             agenda.cancelar(session, 999999999)
+
+
+def _criar(session, profissional, servico, inicio, fim):
+    return AgendaPropria().criar(
+        session,
+        profissional_id=profissional,
+        servico_id=servico,
+        contato_telefone=TELEFONE,
+        inicio=inicio,
+        fim=fim,
+    )
+
+
+def _status_como_admin(agendamento_id):
+    with engine_admin.connect() as conexao:
+        return conexao.execute(
+            text("SELECT status FROM agendamentos WHERE id = :id"), {"id": agendamento_id}
+        ).scalar()
+
+
+# --- B5: cancelar so alcanca agendamento ativo do proprio tenant ---
+
+
+def test_cancelar_duas_vezes_levanta_na_segunda(cenario):
+    """Um agendamento ja cancelado nao pode ser cancelado de novo como se fosse sucesso."""
+    tenant, profissional, servico = cenario
+    inicio, fim = _janela()
+    agenda = AgendaPropria()
+
+    with sessao_tenant(tenant) as session:
+        criado = _criar(session, profissional, servico, inicio, fim)
+        agenda.cancelar(session, criado.id)
+
+    with sessao_tenant(tenant) as session:
+        with pytest.raises(AgendamentoNaoEncontrado):
+            agenda.cancelar(session, criado.id)
+
+
+def test_cancelar_agendamento_real_de_outra_clinica_levanta(cenario, outro_cenario):
+    """Com app_clinicas, o id real de outra clinica nao e alcancado. O RLS ja protege."""
+    tenant_a, _, _ = cenario
+    tenant_b, profissional_b, servico_b = outro_cenario
+    inicio, fim = _janela()
+
+    with sessao_tenant(tenant_b) as session:
+        de_b = _criar(session, profissional_b, servico_b, inicio, fim)
+
+    with sessao_tenant(tenant_a) as session:
+        with pytest.raises(AgendamentoNaoEncontrado):
+            AgendaPropria().cancelar(session, de_b.id)
+
+    assert _status_como_admin(de_b.id) == STATUS_AGENDADO
+
+
+def test_cancelar_filtra_o_tenant_mesmo_sem_rls(cenario, outro_cenario):
+    """Segunda barreira (ADR 0002): o filtro explicito de tenant vale sem o RLS.
+
+    A sessao usa a conta de administracao, que ignora o RLS, com app.tenant_id de
+    A. So o filtro de tenant_id no proprio UPDATE impede cancelar o agendamento
+    de B. A sessao termina em rollback, entao B nao e alterado nem se o teste falhar.
+    """
+    tenant_a, _, _ = cenario
+    tenant_b, profissional_b, servico_b = outro_cenario
+    inicio, fim = _janela()
+
+    with sessao_tenant(tenant_b) as session:
+        de_b = _criar(session, profissional_b, servico_b, inicio, fim)
+
+    session = sessionmaker(bind=engine_admin)()
+    try:
+        session.execute(text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(tenant_a)})
+        with pytest.raises(AgendamentoNaoEncontrado):
+            AgendaPropria().cancelar(session, de_b.id)
+    finally:
+        session.rollback()
+        session.close()
+
+    assert _status_como_admin(de_b.id) == STATUS_AGENDADO

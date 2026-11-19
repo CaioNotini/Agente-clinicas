@@ -61,6 +61,6 @@ class AgendaProvider(ABC):
     def cancelar(self, session, agendamento_id: int) -> Agendamento:
         """Marca o agendamento como 'cancelado' na sessao aberta e devolve a linha.
 
-        Levanta AgendamentoNaoEncontrado se nenhum agendamento do tenant da sessao
-        tiver esse id.
+        Levanta AgendamentoNaoEncontrado se nenhum agendamento ativo ('agendado')
+        do tenant da sessao tiver esse id. Um agendamento ja cancelado tambem levanta.
         """

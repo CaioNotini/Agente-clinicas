@@ -7,13 +7,15 @@ e criar na mesma sessao para a operacao ser atomica.
 
 O insert fixa o tenant_id com current_setting('app.tenant_id'), entao a linha criada
 sempre pertence ao tenant da sessao, e a policy de isolamento valida o WITH CHECK.
-O cancelamento depende da policy para so alcancar agendamentos do proprio tenant.
+O cancelamento so alcanca agendamentos ativos do proprio tenant: a policy restringe o
+UPDATE, e o filtro explicito de tenant_id e a segunda barreira (ADR 0002).
 """
 from datetime import datetime
 
 from sqlalchemy import text
 
 from app.agenda.base import (
+    STATUS_AGENDADO,
     STATUS_CANCELADO,
     Agendamento,
     AgendamentoNaoEncontrado,
@@ -69,15 +71,21 @@ class AgendaPropria(AgendaProvider):
         return _para_agendamento(linha)
 
     def cancelar(self, session, agendamento_id: int) -> Agendamento:
-        # A policy de isolamento restringe o UPDATE ao tenant da sessao: um id de
-        # outro tenant (ou inexistente) nao casa e o RETURNING nao devolve linha.
+        # So cancela agendamento ativo: cancelar de novo nao e sucesso. O filtro de
+        # tenant_id e a segunda barreira (ADR 0002). A policy ja restringe o UPDATE ao
+        # tenant da sessao, mas o filtro vale tambem numa conexao sem RLS.
         linha = session.execute(
             text(
                 "UPDATE agendamentos SET status = :cancelado "
-                "WHERE id = :id "
+                "WHERE id = :id AND status = :agendado "
+                "AND tenant_id = current_setting('app.tenant_id')::uuid "
                 f"RETURNING {_COLUNAS}"
             ),
-            {"cancelado": STATUS_CANCELADO, "id": agendamento_id},
+            {
+                "cancelado": STATUS_CANCELADO,
+                "agendado": STATUS_AGENDADO,
+                "id": agendamento_id,
+            },
         ).first()
         if linha is None:
             raise AgendamentoNaoEncontrado(

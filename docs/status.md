@@ -95,6 +95,17 @@ Itens do [plano de 2026-11-18](./diagnosticos/2026-11-18-plano-rodada3.md), feit
 - **Formatação e CI de estilo, 2026-11-18.** O commit `4c90e91` só reformata `app/` com isort (perfil `black`) e black. A AST de cada arquivo ficou igual, exceto a ordem dos imports em `agenda_propria.py` e `models.py`, que têm os mesmos nomes importados. Esse commit está em [`.git-blame-ignore-revs`](../.git-blame-ignore-revs). black e isort passam a reprovar a CI, e os dois falharam num controle com um arquivo fora do padrão. `pytest tests/ -v`: `150 passed` antes e depois da formatação.
 - **Setup do zero pelo README, verificado em 2026-11-18.** Depois de `docker compose down -v`, um `git clone` do commit `132e255` numa pasta nova seguiu só o README, com o `.env` copiado do `.env.example`. Os passos 1 a 8 passaram, e `pytest`: `150 passed`. Também funcionaram a criação da clínica fictícia, o CLI, o worker (job `done`, conversa `idle`) e o `/health` (200). Em Windows, o `pip install` falhou numa pasta de caminho muito longo, pelo limite de 260 caracteres. Numa pasta de caminho curto passou.
 
+## Bloco 2 da rodada 3
+
+Itens A1, B5, B6, B7 e B8 do [plano de 2026-11-18](./diagnosticos/2026-11-18-plano-rodada3.md), na `main`. B5 e B6 são código da tarefa 5.1. A retomada da etapa 5 para esses itens foi decisão do desenvolvedor em 2026-11-18.
+
+Antes de qualquer correção, os testes novos rodaram contra o código atual: 19 falharam e 18 passaram. Os que passaram são controles ou cobrem comportamento que já estava correto, verificado por controles de remoção.
+
+- **B5, `cancelar` só alcança agendamento ativo do próprio tenant, verificado em 2026-11-18.** O UPDATE de [`agenda_propria.py`](../app/agenda/agenda_propria.py) filtra `status = 'agendado'` e `tenant_id` da sessão, como segunda barreira do [ADR 0002](./decisions/0002-contas-de-banco.md). Testes:
+  - cancelar duas vezes levanta `AgendamentoNaoEncontrado` na segunda vez. Falhava antes.
+  - cancelar o agendamento real de outra clínica com `app_clinicas` levanta e não altera a linha. Já passava antes, porque o RLS protege.
+  - o mesmo caso numa sessão sem RLS, a conta de administração com `app.tenant_id` de A, levanta e não altera a linha. Falhava antes. É o teste que prova a segunda barreira.
+
 ## Bloqueios e pendências
 
 - **Pendência da etapa 9: conversa depois de uma mensagem morta.** Risco aceito em 2026-11-18 no [ADR 0005](./decisions/0005-ordem-por-conversa.md). Quando um job de mensagem vai para `dead`, as mensagens seguintes da conversa são processadas sem ela, e nada muda na conversa. A etapa 9 é a primeira em que o processamento altera o estado da conversa (tarefa 9.2). A conduta precisa estar decidida e implementada antes de a etapa 9 fechar.
