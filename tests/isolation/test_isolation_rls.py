@@ -322,3 +322,53 @@ def _problemas_de_cobertura_rls():
 def test_toda_tabela_com_tenant_id_esta_coberta_pelo_rls():
     """Regra 20 do CLAUDE.md, verificada pelo catálogo e não por uma lista manual."""
     assert _problemas_de_cobertura_rls() == []
+
+
+def _fks_entre_clinicas_sem_tenant():
+    """FKs de uma tabela com tenant_id para outra tabela com tenant_id sem o par tenant_id.
+
+    A verificação de FK ignora o RLS, então a FK precisa incluir tenant_id nos dois
+    lados, na mesma posição (ADR 0007). A FK para clinicas.tenant_id é a própria
+    clínica e fica de fora.
+    """
+    with engine_app.connect() as conexao:
+        fks = conexao.execute(
+            text(
+                "SELECT c.conname, c.conrelid::regclass::text AS filha, "
+                "c.confrelid::regclass::text AS pai, "
+                "ARRAY(SELECT a.attname FROM unnest(c.conkey) WITH ORDINALITY k(n, i) "
+                "      JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.n "
+                "      ORDER BY k.i)::text[] AS colunas, "
+                "ARRAY(SELECT a.attname FROM unnest(c.confkey) WITH ORDINALITY k(n, i) "
+                "      JOIN pg_attribute a ON a.attrelid = c.confrelid AND a.attnum = k.n "
+                "      ORDER BY k.i)::text[] AS referenciadas "
+                "FROM pg_constraint c "
+                "WHERE c.contype = 'f' AND c.connamespace = 'public'::regnamespace "
+                "ORDER BY c.conname"
+            )
+        ).fetchall()
+        com_tenant = {
+            linha.table_name
+            for linha in conexao.execute(
+                text(
+                    "SELECT table_name FROM information_schema.columns "
+                    "WHERE table_schema = 'public' AND column_name = 'tenant_id'"
+                )
+            )
+        }
+
+    problemas = []
+    for fk in fks:
+        if fk.filha not in com_tenant or fk.pai not in com_tenant:
+            continue
+        if fk.pai == "clinicas" and fk.referenciadas == ["tenant_id"]:
+            continue
+        pares = list(zip(fk.colunas, fk.referenciadas))
+        if ("tenant_id", "tenant_id") not in pares:
+            problemas.append(f"{fk.conname}: {fk.filha} -> {fk.pai} sem tenant_id")
+    return problemas
+
+
+def test_fk_entre_tabelas_de_clinica_inclui_tenant_id():
+    """ADR 0007: nenhuma FK entre tabelas de clínica referencia só o id."""
+    assert _fks_entre_clinicas_sem_tenant() == []

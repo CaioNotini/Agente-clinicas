@@ -18,6 +18,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
@@ -60,7 +61,11 @@ class Profissional(Base):
     ativo = Column(Boolean, default=True)
     criada_em = Column(DateTime, server_default=func.now())
 
-    __table_args__ = (Index("idx_profissionais_tenant", "tenant_id"),)
+    __table_args__ = (
+        Index("idx_profissionais_tenant", "tenant_id"),
+        # Alvo das FKs compostas por tenant (ADR 0007)
+        UniqueConstraint("tenant_id", "id", name="uq_profissionais_tenant_id_id"),
+    )
 
 
 class Servico(Base):
@@ -76,7 +81,11 @@ class Servico(Base):
     ativo = Column(Boolean, default=True)
     criada_em = Column(DateTime, server_default=func.now())
 
-    __table_args__ = (Index("idx_servicos_tenant", "tenant_id"),)
+    __table_args__ = (
+        Index("idx_servicos_tenant", "tenant_id"),
+        # Alvo das FKs compostas por tenant (ADR 0007)
+        UniqueConstraint("tenant_id", "id", name="uq_servicos_tenant_id_id"),
+    )
 
 
 class HorarioTrabalho(Base):
@@ -86,14 +95,22 @@ class HorarioTrabalho(Base):
     tenant_id = Column(
         UUID(as_uuid=True), ForeignKey("clinicas.tenant_id"), nullable=False
     )
-    profissional_id = Column(Integer, ForeignKey("profissionais.id"), nullable=False)
+    profissional_id = Column(Integer, nullable=False)
     dia_semana = Column(Integer)  # 0=seg, 6=dom
     hora_inicio = Column(Time)
     hora_fim = Column(Time)
     ativo = Column(Boolean, default=True)
     criada_em = Column(DateTime, server_default=func.now())
 
-    __table_args__ = (Index("idx_horarios_tenant", "tenant_id"),)
+    __table_args__ = (
+        Index("idx_horarios_tenant", "tenant_id"),
+        # FK composta: o registro pai precisa ser da mesma clinica (ADR 0007)
+        ForeignKeyConstraint(
+            ["tenant_id", "profissional_id"],
+            ["profissionais.tenant_id", "profissionais.id"],
+            name="fk_horarios_trabalho_profissional_id_tenant",
+        ),
+    )
 
 
 class Job(Base):
@@ -176,6 +193,8 @@ class Conversa(Base):
             "tenant_id", "contato_telefone", name="uq_conversas_tenant_contato"
         ),
         Index("idx_conversas_tenant", "tenant_id"),
+        # Alvo das FKs compostas por tenant (ADR 0007)
+        UniqueConstraint("tenant_id", "id", name="uq_conversas_tenant_id_id"),
         CheckConstraint(
             "estado_conversa IN ('idle', 'coletando_info', 'aguardando_confirmacao', 'escalada', 'encerrada')",
             name="ck_conversas_estado",
@@ -222,8 +241,8 @@ class ProfissionalServico(Base):
     tenant_id = Column(
         UUID(as_uuid=True), ForeignKey("clinicas.tenant_id"), nullable=False
     )
-    profissional_id = Column(Integer, ForeignKey("profissionais.id"), nullable=False)
-    servico_id = Column(Integer, ForeignKey("servicos.id"), nullable=False)
+    profissional_id = Column(Integer, nullable=False)
+    servico_id = Column(Integer, nullable=False)
     criada_em = Column(DateTime, server_default=func.now())
 
     __table_args__ = (
@@ -231,6 +250,17 @@ class ProfissionalServico(Base):
             "profissional_id", "servico_id", name="uq_profissional_servico"
         ),
         Index("idx_profissional_servicos_tenant", "tenant_id"),
+        # FK composta: o registro pai precisa ser da mesma clinica (ADR 0007)
+        ForeignKeyConstraint(
+            ["tenant_id", "profissional_id"],
+            ["profissionais.tenant_id", "profissionais.id"],
+            name="fk_profissional_servicos_profissional_id_tenant",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "servico_id"],
+            ["servicos.tenant_id", "servicos.id"],
+            name="fk_profissional_servicos_servico_id_tenant",
+        ),
     )
 
 
@@ -262,7 +292,7 @@ class Handoff(Base):
     tenant_id = Column(
         UUID(as_uuid=True), ForeignKey("clinicas.tenant_id"), nullable=False
     )
-    conversa_id = Column(Integer, ForeignKey("conversas.id"), nullable=False)
+    conversa_id = Column(Integer, nullable=False)
     motivo = Column(String(50), nullable=False)
     notificado_em = Column(DateTime)
     assumido_por = Column(String(100))
@@ -273,6 +303,12 @@ class Handoff(Base):
     __table_args__ = (
         Index("idx_handoffs_tenant", "tenant_id"),
         Index("idx_handoffs_conversa", "conversa_id"),
+        # FK composta: o registro pai precisa ser da mesma clinica (ADR 0007)
+        ForeignKeyConstraint(
+            ["tenant_id", "conversa_id"],
+            ["conversas.tenant_id", "conversas.id"],
+            name="fk_handoffs_conversa_id_tenant",
+        ),
     )
 
 
@@ -324,8 +360,8 @@ class Agendamento(Base):
     tenant_id = Column(
         UUID(as_uuid=True), ForeignKey("clinicas.tenant_id"), nullable=False
     )
-    profissional_id = Column(Integer, ForeignKey("profissionais.id"), nullable=False)
-    servico_id = Column(Integer, ForeignKey("servicos.id"), nullable=False)
+    profissional_id = Column(Integer, nullable=False)
+    servico_id = Column(Integer, nullable=False)
     contato_telefone = Column(String(20), nullable=False)
     inicio = Column(DateTime(timezone=True), nullable=False)
     fim = Column(DateTime(timezone=True), nullable=False)
@@ -354,4 +390,15 @@ class Agendamento(Base):
             name="ex_agendamentos_conflito",
         ),
         Index("idx_agendamentos_tenant", "tenant_id"),
+        # FK composta: o registro pai precisa ser da mesma clinica (ADR 0007)
+        ForeignKeyConstraint(
+            ["tenant_id", "profissional_id"],
+            ["profissionais.tenant_id", "profissionais.id"],
+            name="fk_agendamentos_profissional_id_tenant",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "servico_id"],
+            ["servicos.tenant_id", "servicos.id"],
+            name="fk_agendamentos_servico_id_tenant",
+        ),
     )

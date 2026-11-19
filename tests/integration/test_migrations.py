@@ -22,6 +22,9 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.pool import NullPool
 
+from alembic.config import Config
+from alembic.script import ScriptDirectory
+
 from app.config import MIGRATION_DATABASE_URL
 
 RAIZ = Path(__file__).resolve().parents[2]
@@ -52,6 +55,11 @@ def _alembic(banco, *argumentos):
     )
 
 
+def _head():
+    """Head unico da cadeia de migrations, lido do proprio Alembic."""
+    return ScriptDirectory.from_config(Config(str(RAIZ / "alembic.ini"))).get_current_head()
+
+
 def _consultar(banco, sql, parametros=None):
     url = make_url(MIGRATION_DATABASE_URL).set(database=banco)
     engine = create_engine(url, poolclass=NullPool)
@@ -69,7 +77,7 @@ def test_upgrade_head_num_segundo_banco_do_mesmo_cluster(banco_temporario):
 
     assert resultado.returncode == 0, resultado.stderr[-2000:]
     versao = _consultar(banco_temporario, "SELECT version_num FROM alembic_version")
-    assert versao == [("5f2c8a1d9e47",)]
+    assert versao == [(_head(),)]
     # A troca de scheduler_service por worker_jobs continua valendo no cluster
     roles = _consultar(
         banco_temporario,

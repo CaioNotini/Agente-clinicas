@@ -97,7 +97,7 @@ Itens do [plano de 2026-11-18](./diagnosticos/2026-11-18-plano-rodada3.md), feit
 
 ## Bloco 2 da rodada 3
 
-Itens A1, B5, B6, B7 e B8 do [plano de 2026-11-18](./diagnosticos/2026-11-18-plano-rodada3.md), na `main`. B5 e B6 são código da tarefa 5.1. A retomada da etapa 5 para esses itens foi decisão do desenvolvedor em 2026-11-18.
+Itens A1, B5, B6, B7 e B8 do [plano de 2026-11-18](./diagnosticos/2026-11-18-plano-rodada3.md), na `main`. Decisão do A1 no [ADR 0007](./decisions/0007-fks-compostas-por-tenant.md), aceito em 2026-11-18. B5 e B6 são código da tarefa 5.1. A retomada da etapa 5 para esses itens foi decisão do desenvolvedor em 2026-11-18.
 
 Antes de qualquer correção, os testes novos rodaram contra o código atual: 19 falharam e 18 passaram. Os que passaram são controles ou cobrem comportamento que já estava correto, verificado por controles de remoção.
 
@@ -111,10 +111,18 @@ Antes de qualquer correção, os testes novos rodaram contra o código atual: 19
   - uma tabela com `tenant_id` sem RLS fez o teste falhar.
   - a mesma tabela com RLS, FORCE e uma `isolamento_tenant` com `USING (true)` também.
   - uma policy permissiva extra em `servicos` também.
+- **A1, FKs compostas com `tenant_id`, verificado em 2026-11-18.** A migration `8b3e1f6a2c90` cria UNIQUE `(tenant_id, id)` em `profissionais`, `servicos` e `conversas` e troca as 6 FKs simples por compostas ([ADR 0007](./decisions/0007-fks-compostas-por-tenant.md)). Verificações feitas:
+  - `tests/isolation/test_fk_tenant.py`: as 6 inserções e as 6 alterações com o registro pai de outra clínica falhavam antes e agora são rejeitadas com `23503`. Os 6 controles com registros da própria clínica passam antes e depois.
+  - `test_fk_entre_tabelas_de_clinica_inclui_tenant_id` lê o catálogo e falhava antes, listando exatamente as 6 FKs.
+  - o downgrade recria as FKs simples com os nomes originais, conferido no catálogo.
+  - com uma referência cruzada nos dados, o upgrade parou com erro explícito e o banco ficou em `5f2c8a1d9e47`. Os dados de controle foram removidos.
+  - o ciclo da CI (`upgrade head`, `downgrade base`, `upgrade head`), o `alembic check` e a consulta de PK passaram.
+  - `test_upgrade_head_num_segundo_banco_do_mesmo_cluster` passa a ler o head do Alembic, em vez de fixar a revisão.
+  - `pytest tests/ -v`: `185 passed`.
 
 ## Bloqueios e pendências
 
-- **Divergência com o ADR 0004: conflito concorrente também chega como `40P01`.** O [ADR 0004](./decisions/0004-conflito-de-horario.md) diz que a violação chega como `23P01`, e a tradução planejada para a 5.3 (item C2 do plano) só trata esse código. Em 2026-11-18, com duas gravações concorrentes do mesmo horário, a perdedora recebeu às vezes `40P01` (deadlock detectado na verificação da constraint). Só uma gravação é aceita nos dois casos. A decisão sobre o ADR 0004 e a tradução do `40P01` está pendente com o desenvolvedor.
+- **Tradução de `23P01` e `40P01` na tarefa 5.3.** Em 2026-11-18, duas gravações concorrentes do mesmo horário mostraram que a perdedora pode receber `40P01` (deadlock na verificação da constraint), além do `23P01`. O [ADR 0004](./decisions/0004-conflito-de-horario.md) foi revisado em 2026-11-18 para descrever isso. Hoje nenhum dos dois códigos é traduzido. A tradução e o SAVEPOINT continuam planejados para a 5.3 (item C2 do plano).
 
 - **Pendência da etapa 9: conversa depois de uma mensagem morta.** Risco aceito em 2026-11-18 no [ADR 0005](./decisions/0005-ordem-por-conversa.md). Quando um job de mensagem vai para `dead`, as mensagens seguintes da conversa são processadas sem ela, e nada muda na conversa. A etapa 9 é a primeira em que o processamento altera o estado da conversa (tarefa 9.2). A conduta precisa estar decidida e implementada antes de a etapa 9 fechar.
 - **Desvio na ordem das etapas 4 e 5.** As tarefas 5.5 e 5.1 foram feitas na branch `wip/agendamentos` com a etapa 4 ainda parcial. Decisão de 2026-11-18: a etapa 5 fica parada até a etapa 4 fechar. A etapa 4 fechou em 2026-11-18, e a retomada da etapa 5 aguarda decisão do desenvolvedor.
