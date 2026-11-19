@@ -46,8 +46,6 @@ class Clinica(Base):
     ativo = Column(Boolean, default=True)
     criada_em = Column(DateTime, server_default=func.now())
 
-    __table_args__ = (Index("idx_clinicas_tenant_id", "tenant_id"),)
-
 
 class Profissional(Base):
     __tablename__ = "profissionais"
@@ -192,7 +190,6 @@ class Conversa(Base):
         UniqueConstraint(
             "tenant_id", "contato_telefone", name="uq_conversas_tenant_contato"
         ),
-        Index("idx_conversas_tenant", "tenant_id"),
         # Alvo das FKs compostas por tenant (ADR 0007)
         UniqueConstraint("tenant_id", "id", name="uq_conversas_tenant_id_id"),
         CheckConstraint(
@@ -280,7 +277,6 @@ class PacienteContato(Base):
         UniqueConstraint(
             "tenant_id", "contato_telefone", name="uq_pacientes_tenant_contato"
         ),
-        Index("idx_pacientes_contatos_tenant", "tenant_id"),
     )
 
 

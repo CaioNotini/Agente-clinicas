@@ -8,7 +8,11 @@ services:
       POSTGRES_DB: ${DB_NAME:-agente_estudo}
       PGPASSWORD: ${DB_PASSWORD}
     ports:
-      - "${DB_PORT:-5434}:5432"
+      # So no loopback: o banco de desenvolvimento nao fica exposto na rede. Os dois
+      # enderecos sao necessarios porque localhost resolve primeiro para ::1, e sem
+      # ele cada conexao espera cerca de 2 s antes de cair para 127.0.0.1.
+      - "127.0.0.1:${DB_PORT:-5434}:5432"
+      - "[::1]:${DB_PORT:-5434}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:

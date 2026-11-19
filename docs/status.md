@@ -139,6 +139,16 @@ Itens B9 a B12 do [plano de 2026-11-18](./diagnosticos/2026-11-18-plano-rodada3.
   - `etapas.md` foi mantido: `tests/unit/` passou a existir, e `app/handoff/` é o destino da 5.4, na etapa ativa.
   
   `pytest tests/ -v`: `185 passed`.
+- **B11, limpeza, verificado em 2026-11-18.** Mudanças:
+  - a fixture `client` de `tests/conftest.py` não era usada, porque `tests/test_health.py` define a própria. O arquivo foi removido.
+  - `requirements.txt` ficou só com produção. As ferramentas de teste e lint, que já estavam em `requirements-dev.txt`, saíram dele. Nenhuma dependência prevista para as próximas etapas foi removida. Um venv só com `requirements.txt` importou a aplicação, o worker, o CLI e o script de senhas, e rodou o `alembic`.
+  - o espaço sobrando em `pytest-timeout==2.4.0` foi removido.
+  - a migration nova `4d7a9c2e1b56` remove `idx_clinicas_tenant_id`, `idx_conversas_tenant` e `idx_pacientes_contatos_tenant`, cobertos por índices únicos que começam por `tenant_id`. Ciclo de desce e sobe, `alembic check` e consulta de PK passaram.
+  - `docker-compose.yml` publica a porta só em `127.0.0.1` e `[::1]`. Só com `127.0.0.1`, cada conexão por `localhost` levou 2,1 s no Windows e a suíte passou de 22 s para 110 s. Com os dois loopbacks, 0,04 s por conexão.
+  - mantidos por instrução do desenvolvedor: os `import sqlalchemy as sa` sem uso nas migrations já aplicadas.
+  - não alterados: as entradas `.dockerignore` e `docs/glossario.md` do `.gitignore`, que dependem de decisão do desenvolvedor.
+  
+  `pytest tests/ -v`: `185 passed`.
 
 ## Bloqueios e pendências
 
