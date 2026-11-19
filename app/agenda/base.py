@@ -55,7 +55,11 @@ class AgendaProvider(ABC):
         inicio: datetime,
         fim: datetime,
     ) -> Agendamento:
-        """Grava um agendamento 'agendado' na sessao aberta e devolve a linha criada."""
+        """Grava um agendamento 'agendado' na sessao aberta e devolve a linha criada.
+
+        Levanta ValueError, sem ir ao banco, se inicio ou fim nao tiverem fuso
+        horario ou se fim nao for depois de inicio.
+        """
 
     @abstractmethod
     def cancelar(self, session, agendamento_id: int) -> Agendamento:

@@ -105,6 +105,7 @@ Antes de qualquer correção, os testes novos rodaram contra o código atual: 19
   - cancelar duas vezes levanta `AgendamentoNaoEncontrado` na segunda vez. Falhava antes.
   - cancelar o agendamento real de outra clínica com `app_clinicas` levanta e não altera a linha. Já passava antes, porque o RLS protege.
   - o mesmo caso numa sessão sem RLS, a conta de administração com `app.tenant_id` de A, levanta e não altera a linha. Falhava antes. É o teste que prova a segunda barreira.
+- **B6, `criar` valida fuso e intervalo, verificado em 2026-11-18.** `criar` levanta `ValueError` sem ir ao banco quando `inicio` ou `fim` não têm fuso ou quando `fim <= inicio`. Os 5 casos usam uma sessão falsa que falha se for usada. Antes, os 5 iam ao banco. Controle: um horário com fuso -03:00 é aceito e gravado como o mesmo instante em UTC. `pytest tests/ -v`: só falham os 12 testes de A1, ainda não implementado.
 
 ## Bloqueios e pendências
 

@@ -254,3 +254,53 @@ def test_cancelar_filtra_o_tenant_mesmo_sem_rls(cenario, outro_cenario):
         session.close()
 
     assert _status_como_admin(de_b.id) == STATUS_AGENDADO
+
+
+# --- B6: criar valida fuso e intervalo antes de ir ao banco ---
+
+
+class _SessaoQueNaoPodeSerUsada:
+    """Sessao falsa: qualquer acesso ao banco falha o teste."""
+
+    def execute(self, *args, **kwargs):
+        raise AssertionError("criar foi ao banco com dados invalidos")
+
+
+_INICIO_UTC = datetime(2027, 3, 1, 9, 0, tzinfo=timezone.utc)
+_SEM_FUSO = datetime(2027, 3, 1, 9, 0)
+
+
+@pytest.mark.parametrize(
+    "inicio, fim",
+    [
+        pytest.param(_SEM_FUSO, _INICIO_UTC + timedelta(minutes=30), id="inicio_sem_fuso"),
+        pytest.param(_INICIO_UTC, _SEM_FUSO + timedelta(minutes=30), id="fim_sem_fuso"),
+        pytest.param(_SEM_FUSO, _SEM_FUSO + timedelta(minutes=30), id="ambos_sem_fuso"),
+        pytest.param(_INICIO_UTC, _INICIO_UTC, id="fim_igual_inicio"),
+        pytest.param(_INICIO_UTC, _INICIO_UTC - timedelta(minutes=30), id="fim_antes_do_inicio"),
+    ],
+)
+def test_criar_rejeita_dados_invalidos_antes_do_banco(inicio, fim):
+    with pytest.raises(ValueError):
+        AgendaPropria().criar(
+            _SessaoQueNaoPodeSerUsada(),
+            profissional_id=1,
+            servico_id=1,
+            contato_telefone=TELEFONE,
+            inicio=inicio,
+            fim=fim,
+        )
+
+
+def test_controle_criar_aceita_fuso_diferente_de_utc(cenario):
+    """Controle: um horario com fuso -03:00 e aceito e gravado como o mesmo instante."""
+    tenant, profissional, servico = cenario
+    brasilia = timezone(timedelta(hours=-3))
+    inicio = datetime(2027, 3, 1, 9, 0, tzinfo=brasilia)
+    fim = inicio + timedelta(minutes=30)
+
+    with sessao_tenant(tenant) as session:
+        criado = _criar(session, profissional, servico, inicio, fim)
+
+    assert criado.inicio == inicio
+    assert criado.inicio == datetime(2027, 3, 1, 12, 0, tzinfo=timezone.utc)

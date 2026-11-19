@@ -41,6 +41,19 @@ def _para_agendamento(linha) -> Agendamento:
     )
 
 
+def _validar_intervalo(inicio: datetime, fim: datetime) -> None:
+    """Rejeita o intervalo antes de ir ao banco.
+
+    Sem fuso, o timestamptz interpretaria o horario pelo TimeZone da sessao, e o
+    mesmo valor viraria instantes diferentes conforme a conexao.
+    """
+    for nome, valor in (("inicio", inicio), ("fim", fim)):
+        if valor.tzinfo is None or valor.utcoffset() is None:
+            raise ValueError(f"{nome} precisa ter fuso horario")
+    if fim <= inicio:
+        raise ValueError("fim precisa ser depois de inicio")
+
+
 class AgendaPropria(AgendaProvider):
     def criar(
         self,
@@ -52,6 +65,7 @@ class AgendaPropria(AgendaProvider):
         inicio: datetime,
         fim: datetime,
     ) -> Agendamento:
+        _validar_intervalo(inicio, fim)
         # tenant_id vem do proprio setting da sessao, nunca de um parametro do cliente
         linha = session.execute(
             text(
