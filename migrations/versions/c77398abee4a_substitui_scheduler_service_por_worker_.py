@@ -50,9 +50,18 @@ def upgrade() -> None:
     # 4. Agora sim, remove a role
     op.execute("DROP ROLE scheduler_service")
 
-    # 5. Cria a conta de login do unico worker de jobs, com BYPASSRLS
+    # 5. Cria a conta de login do unico worker de jobs, com BYPASSRLS. Roles valem
+    # para o cluster inteiro: so cria se outro banco ainda nao criou (ADR 0006)
     op.execute(
-        "CREATE ROLE worker_jobs LOGIN BYPASSRLS NOSUPERUSER NOCREATEDB NOCREATEROLE"
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'worker_jobs') THEN
+                CREATE ROLE worker_jobs LOGIN BYPASSRLS NOSUPERUSER NOCREATEDB NOCREATEROLE;
+            END IF;
+        END
+        $$
+        """
     )
 
     # 6-10. Grants minimos para o worker: ler a fila, travar jobs, e gravar o que precisar
@@ -71,7 +80,17 @@ def downgrade() -> None:
     op.execute("DROP ROLE worker_jobs")
 
     # Recria scheduler_service exatamente como a migration 2.3 (e4ffcb741dc3) a deixou
-    op.execute("CREATE ROLE scheduler_service NOLOGIN BYPASSRLS NOSUPERUSER NOCREATEDB NOCREATEROLE")
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'scheduler_service') THEN
+                CREATE ROLE scheduler_service NOLOGIN BYPASSRLS NOSUPERUSER NOCREATEDB NOCREATEROLE;
+            END IF;
+        END
+        $$
+        """
+    )
     op.execute(
         "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO scheduler_service"
     )

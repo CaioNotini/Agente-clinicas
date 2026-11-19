@@ -1,7 +1,7 @@
 ```
 Papel: registra como as roles automatizadas são criadas pelas migrations e como recebem a senha.
 Entrada: docs/status.md
-Relaciona-se com: 0002-contas-de-banco.md, ../../scripts/definir_senhas.py, ../../.github/workflows/ci.yml, ../../tests/integration/test_senhas_roles.py
+Relaciona-se com: 0002-contas-de-banco.md, ../../scripts/definir_senhas.py, ../../.github/workflows/ci.yml, ../../tests/integration/test_senhas_roles.py, ../../tests/integration/test_migrations.py
 ```
 
 # 0006: Provisionamento das roles automatizadas
@@ -36,6 +36,14 @@ O script lê as variáveis pelo mesmo `app/config.py` da aplicação, então a C
 - Nenhuma senha é impressa. Erros de banco mostram só o tipo do erro.
 - Os testes estão em [`test_senhas_roles.py`](../../tests/integration/test_senhas_roles.py). Eles cobrem uma role sem senha que volta a logar depois do script e um nome de role inesperado que é recusado sem alterar nada.
 - Nenhum atributo, grant ou policy muda. Só a forma de aplicar a senha.
+
+**Criação idempotente das roles (item B3 do plano).**
+
+- Roles valem para o cluster inteiro, e o schema vale por banco. Um segundo banco no mesmo container falhava no `alembic upgrade head` com `role "worker_jobs" already exists`.
+- Todo `CREATE ROLE` das migrations passa a rodar só se a role não existir, com um bloco `DO`. A `21bc40ab245c` já fazia isso para `app_clinicas`. Passam a fazer a `e4ffcb741dc3`, para `scheduler_service`, e a `c77398abee4a`, para `worker_jobs` no upgrade e para `scheduler_service` no downgrade.
+- Se a role já existe, ela é usada como está. Os atributos não são conferidos nem alterados.
+- Limite: num segundo banco, descer abaixo da `c77398abee4a` continua falhando, porque o `DROP ROLE worker_jobs` esbarra nos grants do outro banco. Esse caso não é tratado.
+- Teste em [`test_migrations.py`](../../tests/integration/test_migrations.py), num banco temporário. Ele falhava antes da mudança.
 
 ## Status
 

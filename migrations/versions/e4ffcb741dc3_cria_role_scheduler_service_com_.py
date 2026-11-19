@@ -20,7 +20,16 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     # Role do worker: ignora RLS para ler jobs e lembretes de todas as clínicas (D-05)
-    op.execute("CREATE ROLE scheduler_service NOLOGIN BYPASSRLS")
+    # Roles valem para o cluster inteiro: so cria se outro banco ainda nao criou (ADR 0006)
+    op.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'scheduler_service') THEN
+                CREATE ROLE scheduler_service NOLOGIN BYPASSRLS;
+            END IF;
+        END
+        $$
+    """)
     op.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO scheduler_service")
 
 

@@ -82,6 +82,7 @@ Critérios de pronto de cada etapa ficam em [`etapas.md`](./etapas.md). Esta tab
 Itens do [plano de 2026-11-18](./diagnosticos/2026-11-18-plano-rodada3.md), feitos na `main`, um commit por item.
 
 - **Senhas das roles automatizadas, verificado em 2026-11-18.** [`scripts/definir_senhas.py`](../scripts/definir_senhas.py) aplica as senhas de `app_clinicas` e `worker_jobs`, chamado pela CI e pelo setup local. Decisão no [ADR 0006](./decisions/0006-provisionamento-de-roles.md). `tests/integration/test_senhas_roles.py`, 4 testes, falhavam antes do script. `pytest tests/ -v`: `148 passed`. A CI no GitHub ainda não rodou com o passo novo.
+- **B3, `CREATE ROLE` idempotente, verificado em 2026-11-18.** As migrations `e4ffcb741dc3` e `c77398abee4a` só criam a role se ela não existir ([ADR 0006](./decisions/0006-provisionamento-de-roles.md)). `test_upgrade_head_num_segundo_banco_do_mesmo_cluster` falhava antes com `role "worker_jobs" already exists`. `pytest tests/ -v`: `149 passed`.
 
 ## Bloqueios e pendências
 
