@@ -16,7 +16,7 @@ A etapa foi reaberta porque o critério de pronto em [`etapas.md`](./etapas.md) 
 
 A abordagem da garantia de ordem está no [ADR 0005](./decisions/0005-ordem-por-conversa.md), aceito em 2026-11-18. Ela foi implementada em 2026-11-18 com testes passando (seção "Verificado em 2026-11-18"). Para a conversa depois de uma mensagem morta, o desenvolvedor escolheu aceitar o risco até a etapa 9 (ver "Bloqueios e pendências").
 
-**Etapa 5** (agendamento e handoff determinísticos), parada. As tarefas 5.5 (tabela `agendamentos`) e 5.1 (`AgendaProvider` e `AgendaPropria`) foram feitas na branch `wip/agendamentos` antes de a etapa 4 fechar, contra a regra de dependência de [`etapas.md`](./etapas.md). A evidência de testes dessas tarefas não está registrada aqui. Decisão de 2026-11-18: a etapa 5 fica parada até a etapa 4 cumprir o critério de pronto. A etapa 4 fechou em 2026-11-18. A retomada da etapa 5 aguarda decisão do desenvolvedor. Critérios de pronto em [`etapas.md`](./etapas.md).
+**Etapa 5** (agendamento e handoff determinísticos), parada. As tarefas 5.5 (tabela `agendamentos`) e 5.1 (`AgendaProvider` e `AgendaPropria`) foram feitas na branch `wip/agendamentos` antes de a etapa 4 fechar, contra a regra de dependência de [`etapas.md`](./etapas.md). Em 2026-11-18 os itens A1, B5, B6, B7 e B8 do plano reforçaram e testaram essas tarefas (seção "Bloco 2 da rodada 3"). Decisão de 2026-11-18: a etapa 5 fica parada até a etapa 4 cumprir o critério de pronto. A etapa 4 fechou em 2026-11-18. A retomada da etapa 5 aguarda decisão do desenvolvedor. Critérios de pronto em [`etapas.md`](./etapas.md).
 
 ## Estado das etapas (0 a 21)
 
@@ -29,7 +29,7 @@ Critérios de pronto de cada etapa ficam em [`etapas.md`](./etapas.md). Esta tab
 | 2     | concluída                                        | Schema multi-tenant, RLS, FORCE e policy de isolamento, testado com `app_clinicas` |
 | 3     | concluída                                        | Canal CLI, fila de jobs e worker com `SKIP LOCKED`, exercitado ao vivo             |
 | 4     | concluída                                        | Ver seção "Evidências verificadas na etapa 4"                                      |
-| 5     | parada, 5.5 e 5.1 feitas antes da etapa 4 fechar | branch `wip/agendamentos`, sem evidência de testes registrada                      |
+| 5     | parada, 5.5 e 5.1 feitas antes da etapa 4 fechar | testes de 5.5 e 5.1 na seção "Bloco 2 da rodada 3"                                 |
 | 6     | não iniciada                                     | —                                                                                  |
 | 7     | não iniciada                                     | —                                                                                  |
 | 8     | não iniciada                                     | —                                                                                  |
