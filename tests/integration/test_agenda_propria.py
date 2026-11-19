@@ -304,3 +304,57 @@ def test_controle_criar_aceita_fuso_diferente_de_utc(cenario):
 
     assert criado.inicio == inicio
     assert criado.inicio == datetime(2027, 3, 1, 12, 0, tzinfo=timezone.utc)
+
+
+# --- B7: constraint EXCLUDE ex_agendamentos_conflito (ADR 0004) ---
+
+
+def _horario(hora, minuto=0):
+    return datetime(2027, 4, 5, hora, minuto, tzinfo=timezone.utc)
+
+
+def test_sobreposicao_do_mesmo_profissional_e_rejeitada_com_23p01(cenario):
+    tenant, profissional, servico = cenario
+    with sessao_tenant(tenant) as session:
+        _criar(session, profissional, servico, _horario(10), _horario(10, 30))
+
+    with pytest.raises(IntegrityError) as erro:
+        with sessao_tenant(tenant) as session:
+            _criar(session, profissional, servico, _horario(10, 15), _horario(10, 45))
+    assert erro.value.orig.pgcode == "23P01"  # exclusion_violation
+
+
+def test_horarios_adjacentes_sao_aceitos(cenario):
+    """Intervalo semiaberto: terminar as 10:30 nao conflita com comecar as 10:30."""
+    tenant, profissional, servico = cenario
+    with sessao_tenant(tenant) as session:
+        _criar(session, profissional, servico, _horario(10), _horario(10, 30))
+        _criar(session, profissional, servico, _horario(10, 30), _horario(11))
+        _criar(session, profissional, servico, _horario(9, 30), _horario(10))
+
+
+def test_agendamento_cancelado_nao_conflita(cenario):
+    tenant, profissional, servico = cenario
+    agenda = AgendaPropria()
+    with sessao_tenant(tenant) as session:
+        primeiro = _criar(session, profissional, servico, _horario(10), _horario(10, 30))
+        agenda.cancelar(session, primeiro.id)
+        _criar(session, profissional, servico, _horario(10), _horario(10, 30))
+
+
+def test_mesmo_horario_com_outro_profissional_da_clinica_e_aceito(cenario):
+    """Controle: a constraint e por profissional, nao bloqueia a clinica inteira."""
+    tenant, profissional, servico = cenario
+    outro_profissional = _inserir_profissional(tenant, "Prof 5.1 B")
+    with sessao_tenant(tenant) as session:
+        _criar(session, profissional, servico, _horario(10), _horario(10, 30))
+        _criar(session, outro_profissional, servico, _horario(10), _horario(10, 30))
+
+
+def test_mesmo_horario_em_clinicas_diferentes_e_aceito(cenario, outro_cenario):
+    tenant_a, profissional_a, servico_a = cenario
+    tenant_b, profissional_b, servico_b = outro_cenario
+    with sessao_tenant(tenant_a) as session:
+        _criar(session, profissional_a, servico_a, _horario(10), _horario(10, 30))
+    with sessao_tenant(tenant_b) as session:
+        _criar(session, profissional_b, servico_b, _horario(10), _horario(10, 30))
