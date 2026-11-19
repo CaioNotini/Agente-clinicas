@@ -76,3 +76,39 @@ def test_upgrade_head_num_segundo_banco_do_mesmo_cluster(banco_temporario):
         "SELECT rolname FROM pg_roles WHERE rolname IN ('scheduler_service', 'worker_jobs')",
     )
     assert roles == [("worker_jobs",)]
+
+
+def _constraints_de_mensagens(banco):
+    return _consultar(
+        banco,
+        "SELECT conname, contype FROM pg_constraint "
+        "WHERE conrelid = 'mensagens'::regclass AND contype IN ('p', 'u') "
+        "ORDER BY conname",
+    )
+
+
+@pytest.mark.timeout(240)
+def test_downgrade_de_mensagens_volta_ao_estado_original(banco_temporario):
+    """A6: cada downgrade devolve mensagens.id ao estado que a migration encontrou.
+
+    Estados esperados: depois da c77398abee4a, uma PK chamada pk_mensagens (nome
+    dado pela d109eb356688). Depois da 1bc74598f301, nenhuma PK, porque ela
+    removeu a unica. Depois da 7e9ab495716d, a PK mensagens_pkey.
+    """
+    resultado = _alembic(banco_temporario, "upgrade", "head")
+    assert resultado.returncode == 0, resultado.stderr[-2000:]
+    assert _constraints_de_mensagens(banco_temporario) == [("mensagens_pkey", "p")]
+
+    # Desfaz a 7e9ab495716d: volta ao estado sem PK deixado pela 1bc74598f301
+    resultado = _alembic(banco_temporario, "downgrade", "9d01c00e9d65")
+    assert resultado.returncode == 0, resultado.stderr[-2000:]
+    assert _constraints_de_mensagens(banco_temporario) == []
+
+    # Desfaz a 1bc74598f301: volta a PK pk_mensagens, sem UNIQUE extra
+    resultado = _alembic(banco_temporario, "downgrade", "c77398abee4a")
+    assert resultado.returncode == 0, resultado.stderr[-2000:]
+    assert _constraints_de_mensagens(banco_temporario) == [("pk_mensagens", "p")]
+
+    resultado = _alembic(banco_temporario, "upgrade", "head")
+    assert resultado.returncode == 0, resultado.stderr[-2000:]
+    assert _constraints_de_mensagens(banco_temporario) == [("mensagens_pkey", "p")]

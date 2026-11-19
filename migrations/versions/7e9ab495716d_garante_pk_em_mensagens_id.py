@@ -34,5 +34,6 @@ def upgrade():
 
 
 def downgrade() -> None:
-    """Downgrade schema."""
-    pass
+    # Volta ao estado deixado pela 1bc74598f301, sem PK em mensagens. So remove a
+    # PK que este upgrade cria. IF EXISTS cobre o caso em que o upgrade nao a criou.
+    op.execute("ALTER TABLE mensagens DROP CONSTRAINT IF EXISTS mensagens_pkey")
