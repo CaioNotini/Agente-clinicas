@@ -24,7 +24,7 @@ from app.config import MIGRATION_DATABASE_URL
 from app.core.conversas import conversa_travada
 from app.core.estados import IDLE
 from app.core.processamento import processar_mensagem
-from app.jobs.worker import JobCapturado, processar_um
+from app.jobs.worker import processar_um, reivindicar_job
 
 # Conexao de administracao, so para preparar e limpar os dados do teste
 engine_admin = create_engine(MIGRATION_DATABASE_URL)
@@ -235,17 +235,16 @@ def test_reprocessar_mesmo_job_nao_duplica_conversa(tenant):
 
     Controle: removendo o ON CONFLICT do INSERT em app/core/conversas.py, o segundo
     processamento falha por violacao de chave unica e este teste acusa.
+
+    O job e real e capturado, porque o processamento conclui o job na propria
+    transacao (ADR 0008). A recaptura e simulada devolvendo o job a processing.
     """
-    job = JobCapturado(
-        id=1,
-        tenant_id=tenant,
-        type="PROCESS_INBOUND_MESSAGE",
-        payload={"mensagem_id": uuid.uuid4().hex, "contato_telefone": CONTATO},
-        attempts=1,
-        max_attempts=3,
-    )
+    _enfileirar_mensagem(tenant, CONTATO)
+    job = reivindicar_job(uuid.uuid4().hex)
 
     processar_mensagem(None, job)
+    with engine_admin.begin() as conexao:
+        conexao.execute(text("UPDATE jobs SET status = 'processing' WHERE id = :id"), {"id": job.id})
     processar_mensagem(None, job)  # mesmo job de novo
 
     assert _contar_conversas(tenant, CONTATO) == 1

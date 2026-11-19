@@ -21,6 +21,7 @@ import json
 
 from app.core.conversas import conversa_travada
 from app.db.database import SessionLocal
+from app.jobs.queue import concluir_job
 
 
 def _contato_do_payload(payload):
@@ -43,7 +44,10 @@ def processar_mensagem(conexao, job, session_factory=SessionLocal):
     job. O filtro por tenant_id dentro de conversa_travada e a segunda barreira.
     """
     contato = _contato_do_payload(job.payload)
-    with conversa_travada(job.tenant_id, contato, session_factory=session_factory):
+    with conversa_travada(
+        job.tenant_id, contato, session_factory=session_factory
+    ) as travada:
         # Etapa 4: so garante a conversa e segura o lock enquanto o job e processado.
         # A transicao de estado por conteudo entra na etapa 7 (ADR 0003).
-        pass
+        # Conclusao na mesma transacao dos efeitos, antes do commit (ADR 0008)
+        concluir_job(travada.session, job)

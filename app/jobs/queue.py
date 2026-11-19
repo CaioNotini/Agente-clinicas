@@ -44,6 +44,30 @@ class ColisaoIdEntreTenants(Exception):
     """
 
 
+class JobPerdido(Exception):
+    """O job nao pertence mais a este worker: foi recapturado por outro (ADR 0008)."""
+
+
+def concluir_job(session, job) -> None:
+    """Marca o job como done na sessao app_clinicas que gravou os efeitos (ADR 0008).
+
+    Roda antes do commit da sessao, para efeito e conclusao serem confirmados
+    juntos. So conclui se o job ainda estiver em processing com este worker. Se
+    outro worker o recapturou, levanta JobPerdido, e o chamador desfaz a transacao
+    inteira, efeitos incluidos. O filtro de tenant_id e a segunda barreira da policy.
+    """
+    resultado = session.execute(
+        text(
+            "UPDATE jobs SET status = 'done', last_error = NULL "
+            "WHERE id = :id AND tenant_id = current_setting('app.tenant_id')::uuid "
+            "AND locked_by = :w AND status = 'processing'"
+        ),
+        {"id": job.id, "w": job.worker_id},
+    )
+    if resultado.rowcount != 1:
+        raise JobPerdido(f"job {job.id} nao pertence mais ao worker {job.worker_id}")
+
+
 @dataclass(frozen=True)
 class ResultadoEnfileiramento:
     """Resultado de gravar e enfileirar uma mensagem.

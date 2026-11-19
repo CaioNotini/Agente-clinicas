@@ -37,6 +37,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.config import WORKER_DATABASE_URL
 from app.core.processamento import processar_mensagem
 from app.db.database import CONNECT_TIMEOUT_SEGUNDOS
+from app.jobs.queue import JobPerdido
 
 # Engine do worker, conectado com a conta worker_jobs (BYPASSRLS). Mesmo limite de
 # conexao da aplicacao: um banco inacessivel nao prende o laco do worker.
@@ -65,6 +66,8 @@ class JobCapturado:
     payload: Optional[dict]
     attempts: int
     max_attempts: int
+    # Worker que capturou o job. A conclusao so vale para ele (ADR 0008).
+    worker_id: str = ""
 
 
 def processamento_vazio(conexao, job: JobCapturado) -> None:
@@ -83,6 +86,11 @@ def reivindicar_job(
     sem janela entre eles, entao dois workers nao pegam o mesmo job. attempts
     incrementa aqui, ao pegar o job, e nao na falha. Um job preso em processing
     alem do limite volta a ser candidato.
+
+    A transacao e confirmada ao sair do bloco with, antes de o job ser devolvido.
+    Isso e obrigatorio (ADR 0008): aberta, ela seguraria o FOR UPDATE na linha do
+    job, e a conclusao pela sessao app_clinicas esperaria por ela, travando o
+    proprio worker. Nao processar dentro deste bloco.
 
     Ordem por conversa: o NOT EXISTS so le, sem travar. Uma linha travada por
     outro worker e pulada pelo SKIP LOCKED, mas o NOT EXISTS ainda a enxerga
@@ -126,6 +134,7 @@ def reivindicar_job(
             payload=linha.payload,
             attempts=linha.attempts + 1,
             max_attempts=linha.max_attempts,
+            worker_id=worker_id,
         )
 
 
@@ -146,7 +155,8 @@ def finalizar_job(
         resultado = conexao.execute(
             text(
                 "UPDATE jobs SET status = :s, last_error = :e "
-                "WHERE id = :id AND tenant_id = :t AND locked_by = :w"
+                "WHERE id = :id AND tenant_id = :t AND locked_by = :w "
+                "AND status = 'processing'"
             ),
             {
                 "s": status,
@@ -199,12 +209,19 @@ def processar_um(
                 {"t": job.tenant_id},
             )
             processamento(conexao, job)
+    except JobPerdido:
+        # Outro worker e o dono do job agora. A transacao do processamento ja foi
+        # desfeita, e o job nao e tocado aqui (ADR 0008).
+        return job
     except Exception as erro:  # noqa: BLE001 - qualquer falha de processamento
         # Falha: volta a pending ate o teto; atingido max_attempts, vai para dead
         status = "dead" if job.attempts >= job.max_attempts else "pending"
         finalizar_job(job, worker_id, status, _resumo_erro(erro), engine)
         return job
 
+    # So altera o job se ele ainda estiver em processing com este worker. Um
+    # processamento que concluiu o job na propria transacao ja o deixou done.
+    # Este passo serve aos processamentos sem efeito de clinica (ADR 0008).
     finalizar_job(job, worker_id, "done", None, engine)
     return job
 

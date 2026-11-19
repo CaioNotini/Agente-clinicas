@@ -19,7 +19,7 @@ etapa 7 (ver docs/decisions/0003-grafo-de-transicoes.md). Aqui a conversa nova
 nasce no ESTADO_INICIAL e nenhuma aresta do grafo e decidida.
 """
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from sqlalchemy import text
 
@@ -48,6 +48,9 @@ class ConversaTravada:
     tenant_id: str
     contato_telefone: str
     estado_conversa: str
+    # Sessao da transacao que segura o lock. Efeitos de clinica e a conclusao do job
+    # (ADR 0008) usam esta sessao, para serem confirmados ou desfeitos juntos.
+    session: object = field(default=None, repr=False, compare=False)
 
 
 @contextmanager
@@ -117,6 +120,7 @@ def conversa_travada(
             tenant_id=str(linha.tenant_id),
             contato_telefone=linha.contato_telefone,
             estado_conversa=linha.estado_conversa,
+            session=session,
         )
 
         yield travada

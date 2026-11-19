@@ -10,7 +10,7 @@ Relaciona-se com: etapas.md, estudo.md, arquitetura.md, principios.md, decisions
 
 ## Etapa ativa
 
-**Etapa 5, ativa desde 2026-11-18**, por decisão do desenvolvedor. Agendamento e handoff determinísticos. Critérios de pronto em [`etapas.md`](./etapas.md). As tarefas 5.5 (tabela `agendamentos`) e 5.1 (`AgendaProvider` e `AgendaPropria`) foram feitas na branch `wip/agendamentos` antes de a etapa 4 fechar, contra a regra de dependência de [`etapas.md`](./etapas.md). Em 2026-11-18 os itens A1, B5, B6, B7 e B8 do plano reforçaram e testaram essas tarefas (seção "Bloco 2 da rodada 3"). Faltam as tarefas 5.2, 5.3 e 5.4. O item A3 do plano precisa estar resolvido antes da 5.3.
+**Etapa 5, ativa desde 2026-11-18**, por decisão do desenvolvedor. Agendamento e handoff determinísticos. Critérios de pronto em [`etapas.md`](./etapas.md). As tarefas 5.5 (tabela `agendamentos`) e 5.1 (`AgendaProvider` e `AgendaPropria`) foram feitas na branch `wip/agendamentos` antes de a etapa 4 fechar, contra a regra de dependência de [`etapas.md`](./etapas.md). Em 2026-11-18 os itens A1, B5, B6, B7 e B8 do plano reforçaram e testaram essas tarefas (seção "Bloco 2 da rodada 3"). Faltam as tarefas 5.2, 5.3 e 5.4. O item A3 do plano, pré-requisito da 5.3, foi resolvido em 2026-11-18 ([ADR 0008](./decisions/0008-conclusao-atomica-do-job.md)).
 
 **Etapa 4, concluída em 2026-11-18.** Reaberta em 2026-11-15 e fechada por decisão do desenvolvedor em 2026-11-18, depois da garantia de ordem. Tarefas 4.1 (máquina de estados e transições determinísticas), 4.2 (lock por conversa com `SELECT ... FOR UPDATE` e `lock_timeout`), 4.3 (teste de mensagens seguidas da mesma conversa) e 4.4 (escrita de clínica por sessão `app_clinicas` com RLS, ligada ao worker pelo ponto de injeção `processamento=`) implementadas em 2026-10-29, com testes passando. Evidência na seção "Evidências verificadas na etapa 4".
 
@@ -165,6 +165,12 @@ Decisões de 2026-11-18 e item A3 do [plano](./diagnosticos/2026-11-18-plano-rod
 - **Índices `idx_profissionais_tenant` e `idx_servicos_tenant` removidos** pela migration `b5e8d3f0a7c4`, porque as UNIQUE `(tenant_id, id)` do A1 cobrem as mesmas buscas. Ciclo de desce e sobe e `alembic check` passaram. `pytest tests/ -v`: `191 passed`.
 - **`connect_timeout` de 5 s no engine do worker, verificado em 2026-11-18.** `test_engine_do_worker_usa_connect_timeout` falhava antes. `pytest tests/ -v`: `192 passed`.
   - Incidente: na falha desse teste, antes da correção, o pytest mostrou o dicionário de parâmetros de conexão, com a senha de `worker_jobs`. Os dois testes de `test_database.py` passaram a guardar só o `connect_timeout`, e uma falha de controle mostrou só os números. A senha local de `worker_jobs` precisa ser trocada pelo desenvolvedor.
+- **A3, conclusão atômica do job, verificado em 2026-11-18** ([ADR 0008](./decisions/0008-conclusao-atomica-do-job.md)). O processamento conclui o job com `concluir_job`, na sessão `app_clinicas` da conversa, antes do commit dos efeitos. Se o job foi recapturado, levanta `JobPerdido` e a transação inteira é desfeita. `finalizar_job` só altera jobs em `processing`. `reivindicar_job` confirma a captura antes de devolver o job, e a docstring registra que isso é obrigatório. Verificações feitas:
+  - prova do problema com o código anterior, num script com efeito em `log_auditoria`: a queda entre o efeito e a conclusão gerou 2 efeitos, a recaptura durante um processamento lento gerou 2, e o worker que perdeu o job confirmou 1.
+  - `tests/concurrency/test_conclusao_job.py`, 7 testes, que falhavam antes por falta da API (`ImportError`): queda, recaptura, job perdido, caminho feliz, falha com retry até `dead`, captura confirmada (`FOR UPDATE NOWAIT` de fora durante o processamento) e o controle do travamento (captura aberta faz a conclusão falhar com `55P03`). Estáveis em 20 de 20 execuções, junto com os testes de ordem do ADR 0005.
+  - `test_reprocessar_mesmo_job_nao_duplica_conversa` montava um job que não existe na fila. Passou a capturar um job real e a simular a recaptura, sem mudar a asserção. Controle: sem o `ON CONFLICT`, falha com `UniqueViolation`.
+  - ciclo de migrations (`upgrade head`, `downgrade base`, `upgrade head`), `alembic check` e consulta de PK passaram.
+  - `pytest tests/ -v`: `199 passed`.
 
 ## Bloqueios e pendências
 
