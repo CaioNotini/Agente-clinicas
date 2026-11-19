@@ -60,7 +60,6 @@ class Profissional(Base):
     criada_em = Column(DateTime, server_default=func.now())
 
     __table_args__ = (
-        Index("idx_profissionais_tenant", "tenant_id"),
         # Alvo das FKs compostas por tenant (ADR 0007)
         UniqueConstraint("tenant_id", "id", name="uq_profissionais_tenant_id_id"),
     )
@@ -80,7 +79,6 @@ class Servico(Base):
     criada_em = Column(DateTime, server_default=func.now())
 
     __table_args__ = (
-        Index("idx_servicos_tenant", "tenant_id"),
         # Alvo das FKs compostas por tenant (ADR 0007)
         UniqueConstraint("tenant_id", "id", name="uq_servicos_tenant_id_id"),
     )
