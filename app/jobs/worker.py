@@ -143,7 +143,13 @@ def finalizar_job(
                 "UPDATE jobs SET status = :s, last_error = :e "
                 "WHERE id = :id AND tenant_id = :t AND locked_by = :w"
             ),
-            {"s": status, "e": last_error, "id": job.id, "t": job.tenant_id, "w": worker_id},
+            {
+                "s": status,
+                "e": last_error,
+                "id": job.id,
+                "t": job.tenant_id,
+                "w": worker_id,
+            },
         )
         return resultado.rowcount
 

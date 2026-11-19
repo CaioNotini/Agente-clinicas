@@ -19,6 +19,7 @@ class MensagemEntrada:
     O id e a chave primaria de mensagens e a base da deduplicacao: no WhatsApp
     vem da Meta, no CLI e gerado pelo proprio canal.
     """
+
     id: str
     tenant_id: str
     contato_telefone: str

@@ -5,7 +5,6 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.db import database
 
-
 app = FastAPI(
     title="Agente Clínicas",
     version="0.1.0",

@@ -51,6 +51,7 @@ class ResultadoEnfileiramento:
     duplicada=True quando a mensagem ja existia, caso em que nenhum job novo e
     criado e job_id fica None.
     """
+
     duplicada: bool
     job_id: Optional[int]
 

@@ -9,16 +9,23 @@ raiz_projeto = Path(__file__).resolve().parent.parent
 load_dotenv(raiz_projeto / ".env")
 
 variaveis_obrigatorias = [
-    "DB_HOST", "DB_PORT", "DB_NAME",
-    "DB_USER", "DB_PASSWORD",
-    "APP_DB_USER", "APP_DB_PASSWORD",
-    "WORKER_DB_USER", "WORKER_DB_PASSWORD"
+    "DB_HOST",
+    "DB_PORT",
+    "DB_NAME",
+    "DB_USER",
+    "DB_PASSWORD",
+    "APP_DB_USER",
+    "APP_DB_PASSWORD",
+    "WORKER_DB_USER",
+    "WORKER_DB_PASSWORD",
 ]
 faltando = [nome for nome in variaveis_obrigatorias if not os.getenv(nome)]
 if faltando:
     raise RuntimeError(f"Variáveis ausentes no .env: {', '.join(faltando)}")
 
-_servidor_e_banco = f"{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
+_servidor_e_banco = (
+    f"{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
+)
 
 
 def _monta_url(usuario: str, senha: str) -> str:
@@ -32,4 +39,6 @@ DATABASE_URL = _monta_url(os.getenv("APP_DB_USER"), os.getenv("APP_DB_PASSWORD")
 MIGRATION_DATABASE_URL = _monta_url(os.getenv("DB_USER"), os.getenv("DB_PASSWORD"))
 
 # Conta do worker de jobs: leitura da fila de todas as clínicas (BYPASSRLS)
-WORKER_DATABASE_URL = _monta_url(os.getenv("WORKER_DB_USER"), os.getenv("WORKER_DB_PASSWORD"))
+WORKER_DATABASE_URL = _monta_url(
+    os.getenv("WORKER_DB_USER"), os.getenv("WORKER_DB_PASSWORD")
+)

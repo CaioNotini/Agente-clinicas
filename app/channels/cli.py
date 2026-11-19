@@ -60,7 +60,10 @@ def main(argv=None) -> None:
             break
         resultado = gravar_e_enfileirar(mensagem)
         if resultado.duplicada:
-            canal.send_text(mensagem.contato_telefone, f"mensagem duplicada ignorada (id {mensagem.id})")
+            canal.send_text(
+                mensagem.contato_telefone,
+                f"mensagem duplicada ignorada (id {mensagem.id})",
+            )
         else:
             canal.send_text(
                 mensagem.contato_telefone,

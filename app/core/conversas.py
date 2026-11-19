@@ -39,6 +39,7 @@ LOCK_TIMEOUT_MS = 5000
 @dataclass(frozen=True)
 class ConversaTravada:
     """Conversa cuja linha esta travada pela transacao aberta no bloco."""
+
     id: int
     tenant_id: str
     contato_telefone: str

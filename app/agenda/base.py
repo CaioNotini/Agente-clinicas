@@ -26,6 +26,7 @@ STATUS_CANCELADO = "cancelado"
 @dataclass(frozen=True)
 class Agendamento:
     """Agendamento como lido do banco. inicio e fim sao aware, em UTC (timestamptz)."""
+
     id: int
     tenant_id: str
     profissional_id: int

@@ -14,10 +14,10 @@ from datetime import datetime
 from sqlalchemy import text
 
 from app.agenda.base import (
-    AgendaProvider,
+    STATUS_CANCELADO,
     Agendamento,
     AgendamentoNaoEncontrado,
-    STATUS_CANCELADO,
+    AgendaProvider,
 )
 
 # Colunas devolvidas pelo RETURNING, na ordem usada para montar o Agendamento

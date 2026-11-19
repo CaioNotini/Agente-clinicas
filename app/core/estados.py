@@ -21,9 +21,7 @@ ENCERRADA = "encerrada"
 # Estado inicial de uma conversa recem-criada
 ESTADO_INICIAL = IDLE
 
-ESTADOS = frozenset(
-    {IDLE, COLETANDO_INFO, AGUARDANDO_CONFIRMACAO, ESCALADA, ENCERRADA}
-)
+ESTADOS = frozenset({IDLE, COLETANDO_INFO, AGUARDANDO_CONFIRMACAO, ESCALADA, ENCERRADA})
 
 # Grafo de transicoes validas: origem -> destinos permitidos.
 # Ver docs/decisions/0003-grafo-de-transicoes.md para a justificativa de cada aresta.
