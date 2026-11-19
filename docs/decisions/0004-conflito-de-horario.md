@@ -4,7 +4,7 @@ Entrada: docs/status.md
 Relaciona-se com: ../arquitetura.md (secao 7, modelo de dados), ../etapas.md (etapa 5), ../../app/db/models.py, ../../migrations/versions/b131d6ee6471_cria_tabela_agendamentos.py, ../../tests/isolation/test_isolation_rls.py
 ```
 
-# 0004 — Conflito de horario de agendamentos
+# 0004: Conflito de horario de agendamentos
 
 ## Contexto
 
@@ -22,7 +22,7 @@ As demais tabelas do schema guardam tempo em `timestamp` sem fuso. Agendamento p
 
 ## Decisão
 
-O conflito é garantido por uma constraint `EXCLUDE USING gist` em `agendamentos`, sobre `tenant_id` com igualdade, `profissional_id` com igualdade e `tstzrange(inicio, fim)` com sobreposição, restrita a `status = 'agendado'`. O intervalo é semiaberto `[inicio, fim)`, então horários adjacentes não conflitam. A constraint precisa da extensão `btree_gist` para os operadores de igualdade de `tenant_id` (uuid) e `profissional_id` (integer) dentro do índice gist. A violação chega como SQLSTATE `23P01` e é traduzida em erro de domínio de horário indisponível.
+O conflito é garantido por uma constraint `EXCLUDE USING gist` em `agendamentos`, sobre `tenant_id` com igualdade, `profissional_id` com igualdade e `tstzrange(inicio, fim)` com sobreposição, restrita a `status = 'agendado'`. O intervalo é semiaberto `[inicio, fim)`, então horários adjacentes não conflitam. A constraint precisa da extensão `btree_gist` para os operadores de igualdade de `tenant_id` (uuid) e `profissional_id` (integer) dentro do índice gist. A violação chega como SQLSTATE `23P01`. Com duas gravações concorrentes do mesmo horário, a perdedora também pode receber `40P01` (deadlock detectado na verificação da constraint), observado em 2026-11-18 por [`test_conflito_agendamento.py`](../../tests/concurrency/test_conflito_agendamento.py). Nos dois casos só uma gravação é aceita. Hoje nenhum dos dois códigos é traduzido: o `AgendaPropria` deixa o erro do banco subir ao chamador.
 
 A função pura de conflito usa a mesma semântica de intervalo semiaberto, para o código e o banco concordarem. A constraint é a barreira que vale sob concorrência. A função pura serve à decisão e aos testes sem banco.
 
@@ -35,11 +35,11 @@ Uma constraint no banco não depende da ordem de execução nem de a aplicação
 ## Consequências
 
 - A imagem do banco precisa ter `btree_gist`. Confirmado na imagem `pgvector/pgvector:pg15` usada no Docker local e no CI. A migration habilita a extensão antes de criar a constraint.
-- A inserção de agendamento roda dentro de um SAVEPOINT, porque o `23P01` aborta a transação corrente. No `23P01`, o código relê sob RLS: se o conflitante for do mesmo paciente, profissional e início, devolve o existente (idempotência na corrida). Caso contrário, levanta o erro de domínio de horário indisponível.
+- Planejado para a tarefa 5.3, ainda não implementado: a inserção de agendamento roda dentro de um SAVEPOINT, porque o `23P01` e o `40P01` abortam a transação corrente. Nos dois códigos, o código relê sob RLS: se o conflitante for do mesmo paciente, profissional e início, devolve o existente (idempotência na corrida). Caso contrário, levanta o erro de domínio de horário indisponível.
 - Agendamentos cancelados não entram no conflito, porque a constraint é restrita a `status = 'agendado'`. Remarcar marca o antigo como cancelado antes de criar o novo, na mesma transação.
 - A tabela tem RLS, FORCE e policy `isolamento_tenant`, está em `TABELAS_TENANT` e é coberta pelos testes de isolamento, como exige o CLAUDE.md. A escrita cruzada no teste de isolamento usa dados válidos e exige `match="row-level security"`, para a policy ser a única barreira.
 - O fuso por clínica fica em aberto na seção 13 de [`arquitetura.md`](../arquitetura.md). Enquanto não decidido, o código trabalha com instantes em UTC e isola a conversão de fuso local em um único ponto.
 
 ## Status
 
-Aceita
+Aceita. Revisada em 2026-11-18: o conflito concorrente também chega como `40P01`, e a tradução dos erros fica marcada como planejada para a 5.3.
