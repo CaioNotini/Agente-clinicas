@@ -154,6 +154,22 @@ def finalizar_job(
         return resultado.rowcount
 
 
+def _resumo_erro(erro: Exception) -> str:
+    """Texto curto para last_error, sem dados da mensagem.
+
+    O str() de um erro do SQLAlchemy traz o SQL e os parametros, que podem conter
+    telefone e conteudo. Para esses erros fica so o tipo e o SQLSTATE.
+    """
+    if isinstance(erro, SQLAlchemyError):
+        codigo = getattr(getattr(erro, "orig", None), "pgcode", None)
+        return (
+            f"{type(erro).__name__} (SQLSTATE {codigo})"
+            if codigo
+            else type(erro).__name__
+        )
+    return f"{type(erro).__name__}: {str(erro)[:200]}"
+
+
 def processar_um(
     worker_id: str,
     processamento: Callable[[object, JobCapturado], None] = processamento_vazio,
@@ -181,7 +197,7 @@ def processar_um(
     except Exception as erro:  # noqa: BLE001 - qualquer falha de processamento
         # Falha: volta a pending ate o teto; atingido max_attempts, vai para dead
         status = "dead" if job.attempts >= job.max_attempts else "pending"
-        finalizar_job(job, worker_id, status, str(erro)[:500], engine)
+        finalizar_job(job, worker_id, status, _resumo_erro(erro), engine)
         return job
 
     finalizar_job(job, worker_id, "done", None, engine)

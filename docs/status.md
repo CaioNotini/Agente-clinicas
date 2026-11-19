@@ -149,6 +149,13 @@ Itens B9 a B12 do [plano de 2026-11-18](./diagnosticos/2026-11-18-plano-rodada3.
   - não alterados: as entradas `.dockerignore` e `docs/glossario.md` do `.gitignore`, que dependem de decisão do desenvolvedor.
   
   `pytest tests/ -v`: `185 passed`.
+- **B12, robustez, verificado em 2026-11-18.** Antes das correções, os 6 testes novos falharam e `conversa_travada` quebrava com `AttributeError` quando a conversa não aparecia. Mudanças:
+  - `conversa_travada` levanta `ConversaNaoEncontrada` e desfaz a transação se a conversa não aparecer no `SELECT ... FOR UPDATE` (`tests/unit/test_conversas.py`).
+  - o CLI valida `--tenant` como UUID e encerra com a mensagem de uso (código 2), sem tocar no banco. Uma `ColisaoIdEntreTenants` é avisada e o canal segue com a próxima linha (`tests/unit/test_cli.py`).
+  - o engine da aplicação usa `connect_timeout` de 5 s, conferido nos parâmetros entregues ao driver (`tests/integration/test_database.py`).
+  - `last_error` grava só o tipo e o SQLSTATE nos erros de banco, sem o SQL nem os parâmetros. Nos demais erros, grava o tipo e até 200 caracteres da mensagem (`test_worker.py`).
+  
+  `pytest tests/ -v`: `191 passed`. O engine do worker (`worker_jobs`) não ganhou `connect_timeout`, porque o plano só cita `database.py`.
 
 ## Bloqueios e pendências
 

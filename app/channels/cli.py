@@ -14,7 +14,7 @@ import uuid
 from typing import Optional
 
 from app.channels.base import Channel, MensagemEntrada
-from app.jobs.queue import gravar_e_enfileirar
+from app.jobs.queue import ColisaoIdEntreTenants, gravar_e_enfileirar
 
 
 class CliChannel(Channel):
@@ -47,9 +47,21 @@ class CliChannel(Channel):
         print(f"[para {contato_telefone}] {texto}", file=self.saida)
 
 
+def _tenant_uuid(valor: str) -> str:
+    """Valida --tenant antes de qualquer acesso ao banco."""
+    try:
+        return str(uuid.UUID(valor))
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"tenant_id invalido, esperado UUID: {valor!r}"
+        )
+
+
 def main(argv=None) -> None:
     parser = argparse.ArgumentParser(description="Canal CLI de mensagens (estudo).")
-    parser.add_argument("--tenant", required=True, help="tenant_id (UUID) da clinica")
+    parser.add_argument(
+        "--tenant", required=True, type=_tenant_uuid, help="tenant_id (UUID) da clinica"
+    )
     parser.add_argument("--telefone", required=True, help="telefone do contato")
     args = parser.parse_args(argv)
 
@@ -58,7 +70,12 @@ def main(argv=None) -> None:
         mensagem = canal.receive()
         if mensagem is None:
             break
-        resultado = gravar_e_enfileirar(mensagem)
+        try:
+            resultado = gravar_e_enfileirar(mensagem)
+        except ColisaoIdEntreTenants as erro:
+            # Avisa e segue com a proxima linha, em vez de encerrar o canal
+            canal.send_text(mensagem.contato_telefone, f"mensagem nao gravada: {erro}")
+            continue
         if resultado.duplicada:
             canal.send_text(
                 mensagem.contato_telefone,

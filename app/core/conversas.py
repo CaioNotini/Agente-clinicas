@@ -36,6 +36,10 @@ from app.db.database import SessionLocal
 LOCK_TIMEOUT_MS = 5000
 
 
+class ConversaNaoEncontrada(Exception):
+    """A linha da conversa nao apareceu no SELECT ... FOR UPDATE apos o buscar-ou-criar."""
+
+
 @dataclass(frozen=True)
 class ConversaTravada:
     """Conversa cuja linha esta travada pela transacao aberta no bloco."""
@@ -101,6 +105,12 @@ def conversa_travada(
             ),
             {"t": tenant_id, "tel": contato_telefone},
         ).first()
+        if linha is None:
+            # Nao deveria ocorrer apos o INSERT ... ON CONFLICT. Sem a linha nao ha
+            # lock, entao o processamento nao pode seguir.
+            raise ConversaNaoEncontrada(
+                "conversa nao encontrada apos buscar-ou-criar, para o tenant da sessao"
+            )
 
         travada = ConversaTravada(
             id=linha.id,

@@ -277,3 +277,37 @@ def test_rodar_sobrevive_a_erro_de_banco(tenant):
 
     assert engine.falhas == 0
     assert _estado(job_id).status == "done"
+
+
+# --- B12: last_error sem dados da mensagem ---
+
+TELEFONE_SENSIVEL = "(11) 98765-4321"
+
+
+def test_last_error_de_erro_de_banco_nao_grava_parametros_do_sql(tenant):
+    """O str() de um erro do SQLAlchemy inclui o SQL e os parametros, como o telefone."""
+    job_id = _inserir_job(tenant)
+
+    def falha_de_banco(conexao, job):
+        conexao.execute(
+            text("INSERT INTO tabela_que_nao_existe (telefone) VALUES (:tel)"),
+            {"tel": TELEFONE_SENSIVEL},
+        )
+
+    processar_um(WID, processamento=falha_de_banco)
+
+    last_error = _estado(job_id).last_error
+    vazou = TELEFONE_SENSIVEL in last_error or "tabela_que_nao_existe" in last_error
+    assert not vazou, "last_error gravou o SQL ou os parametros"
+    assert last_error.startswith("ProgrammingError")
+
+
+def test_last_error_de_outro_erro_guarda_tipo_e_mensagem_curta(tenant):
+    job_id = _inserir_job(tenant)
+
+    def falha_simples(conexao, job):
+        raise ValueError("motivo curto")
+
+    processar_um(WID, processamento=falha_simples)
+
+    assert _estado(job_id).last_error == "ValueError: motivo curto"
