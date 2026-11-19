@@ -12,6 +12,8 @@ Relaciona-se com: ../arquitetura.md (seção 5, quem usa qual credencial), ../et
 
 2026-11-15. As consequências passam a listar os grants reais de `worker_jobs`, que são mais amplos que o uso feito pelo código. Nenhum grant foi alterado no banco.
 
+2026-11-18. As senhas de `app_clinicas` e `worker_jobs` passam a ser aplicadas por um script único, chamado pela CI e pelo setup local, conforme o [ADR 0006](./0006-provisionamento-de-roles.md).
+
 ## Status
 
 Aceita.
@@ -46,6 +48,6 @@ Separar por papel mantém o RLS válido para a aplicação, e limita o acesso am
 - Testes de isolamento precisam usar `app_clinicas`. Usar `cnotini` dá resultado falso.
 - Novas tabelas com `tenant_id` precisam entrar na lista `TABELAS_TENANT` dos testes e receber a policy.
 - A role `worker_jobs` é usada só pelo processo do worker de jobs. A aplicação que atende requisições nunca se conecta com ela.
-- A senha de `worker_jobs` é definida pelo CI a partir de secret, como a de `app_clinicas`, e nunca entra em migration.
+- A senha de `worker_jobs`, como a de `app_clinicas`, nunca entra em migration. Ela é aplicada pelo script do [ADR 0006](./0006-provisionamento-de-roles.md), com o valor do secret na CI e do `.env` no ambiente local.
 - O código do worker usa `worker_jobs` somente para a fila (tabela `jobs`). Qualquer escrita específica de clínica passa por sessão `app_clinicas` com RLS, mantendo o filtro explícito de `tenant_id` como segunda barreira.
 - Os grants de `worker_jobs` no banco são mais amplos que esse uso. A migration `c77398abee4a` concede `SELECT` e `UPDATE` em `jobs`, `SELECT` em `mensagens`, `conversas` e `clinicas`, `INSERT` em `mensagens` e `log_auditoria`, e `USAGE` e `SELECT` na sequência `log_auditoria_id_seq`. Hoje o código só usa os grants de `jobs`. Os demais existem no banco e não são usados.

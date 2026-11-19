@@ -6,7 +6,7 @@ Relaciona-se com: etapas.md, estudo.md, arquitetura.md, principios.md, decisions
 
 # Status do projeto
 
-Índice de entrada único da documentação. Último diagnóstico: 2026-10-27, em [`diagnosticos/2026-10-27-rodada2.md`](./diagnosticos/2026-10-27-rodada2.md). Este arquivo registra o estado verificado mais recente.
+Índice de entrada único da documentação. Último diagnóstico: 2026-11-18, em [`diagnosticos/2026-11-18-plano-rodada3.md`](./diagnosticos/2026-11-18-plano-rodada3.md). Este arquivo registra o estado verificado mais recente.
 
 ## Etapa ativa
 
@@ -22,30 +22,30 @@ A abordagem da garantia de ordem está no [ADR 0005](./decisions/0005-ordem-por-
 
 Critérios de pronto de cada etapa ficam em [`etapas.md`](./etapas.md). Esta tabela registra só o que foi verificado.
 
-| Etapa | Estado                            | Evidência                                                                 |
-| ----- | --------------------------------- | ------------------------------------------------------------------------- |
-| 0     | aberta, conteúdo pendente do Caio | FAQ e base fictícia criados em [fake_clinic/](./fake_clinic/)             |
-| 1     | concluída                         | Repositório, Docker Compose, `/health`, pytest e CI                       |
-| 2     | concluída                         | Schema multi-tenant, RLS, FORCE e policy de isolamento, testado com `app_clinicas` |
-| 3     | concluída                         | Canal CLI, fila de jobs e worker com `SKIP LOCKED`, exercitado ao vivo    |
-| 4     | concluída                         | Ver seção "Evidências verificadas na etapa 4"                             |
-| 5     | parada, 5.5 e 5.1 feitas antes da etapa 4 fechar | branch `wip/agendamentos`, sem evidência de testes registrada |
-| 6     | não iniciada                      | —                                                                         |
-| 7     | não iniciada                      | —                                                                         |
-| 8     | não iniciada                      | —                                                                         |
-| 9     | não iniciada                      | —                                                                         |
-| 10    | não iniciada                      | —                                                                         |
-| 11    | não iniciada                      | —                                                                         |
-| 12    | não iniciada                      | —                                                                         |
-| 13    | não iniciada                      | —                                                                         |
-| 14    | não iniciada                      | —                                                                         |
-| 15    | não iniciada                      | —                                                                         |
-| 16    | não iniciada                      | —                                                                         |
-| 17    | não iniciada                      | —                                                                         |
-| 18    | não iniciada                      | —                                                                         |
-| 19    | não iniciada                      | —                                                                         |
-| 20    | não iniciada                      | —                                                                         |
-| 21    | não iniciada                      | —                                                                         |
+| Etapa | Estado                                           | Evidência                                                                          |
+| ----- | ------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| 0     | aberta, conteúdo pendente do Caio                | FAQ e base fictícia criados em [fake_clinic/](./fake_clinic/)                      |
+| 1     | concluída                                        | Repositório, Docker Compose, `/health`, pytest e CI                                |
+| 2     | concluída                                        | Schema multi-tenant, RLS, FORCE e policy de isolamento, testado com `app_clinicas` |
+| 3     | concluída                                        | Canal CLI, fila de jobs e worker com `SKIP LOCKED`, exercitado ao vivo             |
+| 4     | concluída                                        | Ver seção "Evidências verificadas na etapa 4"                                      |
+| 5     | parada, 5.5 e 5.1 feitas antes da etapa 4 fechar | branch `wip/agendamentos`, sem evidência de testes registrada                      |
+| 6     | não iniciada                                     | —                                                                                  |
+| 7     | não iniciada                                     | —                                                                                  |
+| 8     | não iniciada                                     | —                                                                                  |
+| 9     | não iniciada                                     | —                                                                                  |
+| 10    | não iniciada                                     | —                                                                                  |
+| 11    | não iniciada                                     | —                                                                                  |
+| 12    | não iniciada                                     | —                                                                                  |
+| 13    | não iniciada                                     | —                                                                                  |
+| 14    | não iniciada                                     | —                                                                                  |
+| 15    | não iniciada                                     | —                                                                                  |
+| 16    | não iniciada                                     | —                                                                                  |
+| 17    | não iniciada                                     | —                                                                                  |
+| 18    | não iniciada                                     | —                                                                                  |
+| 19    | não iniciada                                     | —                                                                                  |
+| 20    | não iniciada                                     | —                                                                                  |
+| 21    | não iniciada                                     | —                                                                                  |
 
 ## Evidências verificadas na etapa 4
 
@@ -70,11 +70,18 @@ Critérios de pronto de cada etapa ficam em [`etapas.md`](./etapas.md). Esta tab
   - uma mensagem que esgota as tentativas vai para `dead` e libera as seguintes,
   - outras conversas e outras clínicas não são bloqueadas,
   - jobs sem conversa não bloqueiam nem são bloqueados.
-  
+
   Antes da implementação, os 6 falhavam. Estáveis em 20 de 20 execuções. Controle: sem a cláusula `NOT EXISTS` da captura, com o schema novo, os 6 falham.
+
 - **Restrições do schema.** `tests/integration/test_restricoes_schema.py`, 17 testes. Antes da implementação falhavam 15. Os 2 que passavam são os controles positivos de `entrada` e `saida`.
 - **Laço do worker.** `test_rodar_sobrevive_a_erro_de_banco`: um erro de banco no laço não encerra o worker. Falhava antes da implementação.
 - **Testes existentes ajustados ao schema novo, sem mudar asserções.** Os seeds de `test_worker.py` e `test_mensagens_seguidas.py` passam a gravar `contato_telefone` nos jobs de mensagem. O seed de `test_isolation_rls.py` usa `entrada` no lugar de `in`.
+
+## Bloco 1 da rodada 3
+
+Itens do [plano de 2026-11-18](./diagnosticos/2026-11-18-plano-rodada3.md), feitos na `main`, um commit por item.
+
+- **Senhas das roles automatizadas, verificado em 2026-11-18.** [`scripts/definir_senhas.py`](../scripts/definir_senhas.py) aplica as senhas de `app_clinicas` e `worker_jobs`, chamado pela CI e pelo setup local. Decisão no [ADR 0006](./decisions/0006-provisionamento-de-roles.md). `tests/integration/test_senhas_roles.py`, 4 testes, falhavam antes do script. `pytest tests/ -v`: `148 passed`. A CI no GitHub ainda não rodou com o passo novo.
 
 ## Bloqueios e pendências
 
@@ -84,13 +91,13 @@ Critérios de pronto de cada etapa ficam em [`etapas.md`](./etapas.md). Esta tab
   - o laço `rodar()` de `app/jobs/worker.py` passou a usar `processar_mensagem` como processamento padrão.
   - a migration `1bc74598f301` remove a constraint `pk_mensagens` de `mensagens`, tratando-a como UNIQUE redundante. Correção de 2026-11-18: `pk_mensagens` era a única chave primária, e a migration a remove. A chave volta com a `7e9ab495716d`. Causa na seção 0 de [`diagnosticos/2026-11-18-plano-rodada3.md`](./diagnosticos/2026-11-18-plano-rodada3.md).
   - a rota `/health` de `app/main.py` passou a consultar o banco, com 200 quando ele responde e 503 quando não responde. `tests/test_health.py` foi reescrito.
-  - o passo de senha de `worker_jobs` em `.github/workflows/ci.yml` ganhou `ON_ERROR_STOP=1`.
+  - o passo de senha de `worker_jobs` em `.github/workflows/ci.yml` ganhou `ON_ERROR_STOP=1`. Em 2026-11-18 esse passo foi substituído pelo script do [ADR 0006](./decisions/0006-provisionamento-de-roles.md).
 - **O que foi verificado em 2026-11-15, sem banco.** A máquina usada não tinha Docker nem banco no ar. Com variáveis fictícias: os módulos importam sem ciclo, o padrão de `rodar()` é `processar_mensagem`, `alembic heads` mostra `1bc74598f301` como head único, `test_estados.py` passa (30 testes) e o teste de `/health` com banco fora passa (503). Os dois testes de `/health` com banco no ar falharam por falta de banco, como esperado.
 - **O que falta validar.** Em 2026-11-18, com o banco do Docker ligado, `alembic upgrade head` e `pytest tests/ -v` completo passaram (144 testes). Ainda faltam o ciclo de sobe, desce e sobe da migration `1bc74598f301` e a pipeline do CI no GitHub.
 - Os grants de `worker_jobs` no banco são mais amplos que o uso feito pelo código. A decisão de 2026-11-15 foi documentar os grants reais no [ADR 0002](./decisions/0002-contas-de-banco.md), sem alterar o banco.
 - Os testes de `tests/concurrency/test_estados.py` são unitários e não tocam no banco. Ficaram em `tests/concurrency/` porque a etapa 4 só lista esse diretório em [`etapas.md`](./etapas.md). A decisão de movê-los para `tests/unit/` está pendente.
-- **Desvio conhecido na ordem das etapas.** As etapas 1 a 4 avançaram com a etapa 0 ainda aberta, contra a regra de dependência de [`etapas.md`](./etapas.md). A etapa 0 segue pendente do conteúdo de [`pergs_bloqueadas.md`](./fake_clinic/pergs_bloqueadas.md), a cargo do Caio.
-- **Critérios de pronto aprovados.** Em 2026-11-15 o Caio aprovou os critérios de pronto de [`etapas.md`](./etapas.md) como estão, e o aviso de rascunho foi removido.
+- **Desvio conhecido na ordem das etapas.** As etapas 1 a 4 avançaram com a etapa 0 ainda aberta, contra a regra de dependência de [`etapas.md`](./etapas.md). A etapa 0 segue pendente do conteúdo de [`pergs_bloqueadas.md`](./fake_clinic/pergs_bloqueadas.md).
+- **Critérios de pronto aprovados.** Em 2026-11-15 foram aprovados os critérios de pronto de [`etapas.md`](./etapas.md) como estão, e o aviso de rascunho foi removido.
 - **Questões que bloqueiam a especificação da etapa 5.** Q-20 a Q-24, na seção 13 de [`arquitetura.md`](./arquitetura.md).
 - **Ambiguidades de documentação ainda sem decisão.**
   - Q-03 pede resposta na etapa 4 e na etapa 15, mas o ambiente local não tem pooler, então a parte da etapa 4 não tem como ser respondida.
