@@ -156,6 +156,15 @@ Itens B9 a B12 do [plano de 2026-11-18](./diagnosticos/2026-11-18-plano-rodada3.
   - `last_error` grava só o tipo e o SQLSTATE nos erros de banco, sem o SQL nem os parâmetros. Nos demais erros, grava o tipo e até 200 caracteres da mensagem (`test_worker.py`).
   
   `pytest tests/ -v`: `191 passed`. O engine do worker (`worker_jobs`) não ganhou `connect_timeout`, porque o plano só cita `database.py`.
+## Bloco 4 da rodada 3
+
+Decisões de 2026-11-18 e item A3 do [plano](./diagnosticos/2026-11-18-plano-rodada3.md), na `main`, um commit por item.
+
+- **ADR 0008 aceito em 2026-11-18**, com o ajuste de que a captura é confirmada antes do processamento ([ADR 0008](./decisions/0008-conclusao-atomica-do-job.md)).
+- **`.gitignore`** deixou de ignorar `.dockerignore`. `docs/glossario.md` continua ignorado até a confirmação do desenvolvedor.
+- **Índices `idx_profissionais_tenant` e `idx_servicos_tenant` removidos** pela migration `b5e8d3f0a7c4`, porque as UNIQUE `(tenant_id, id)` do A1 cobrem as mesmas buscas. Ciclo de desce e sobe e `alembic check` passaram. `pytest tests/ -v`: `191 passed`.
+- **`connect_timeout` de 5 s no engine do worker, verificado em 2026-11-18.** `test_engine_do_worker_usa_connect_timeout` falhava antes. `pytest tests/ -v`: `192 passed`.
+  - Incidente: na falha desse teste, antes da correção, o pytest mostrou o dicionário de parâmetros de conexão, com a senha de `worker_jobs`. Os dois testes de `test_database.py` passaram a guardar só o `connect_timeout`, e uma falha de controle mostrou só os números. A senha local de `worker_jobs` precisa ser trocada pelo desenvolvedor.
 
 ## Bloqueios e pendências
 

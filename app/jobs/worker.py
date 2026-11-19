@@ -36,9 +36,14 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import WORKER_DATABASE_URL
 from app.core.processamento import processar_mensagem
+from app.db.database import CONNECT_TIMEOUT_SEGUNDOS
 
-# Engine do worker, conectado com a conta worker_jobs (BYPASSRLS)
-engine_worker = create_engine(WORKER_DATABASE_URL)
+# Engine do worker, conectado com a conta worker_jobs (BYPASSRLS). Mesmo limite de
+# conexao da aplicacao: um banco inacessivel nao prende o laco do worker.
+engine_worker = create_engine(
+    WORKER_DATABASE_URL,
+    connect_args={"connect_timeout": CONNECT_TIMEOUT_SEGUNDOS},
+)
 
 # Tempo acima do qual um job preso em processing e considerado orfao
 LIMITE_LOCK_SEGUNDOS = 300

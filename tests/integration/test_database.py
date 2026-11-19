@@ -13,7 +13,8 @@ def test_engine_da_aplicacao_usa_connect_timeout():
     capturados = {}
 
     def capturar(dialect, conn_rec, cargs, cparams):
-        capturados.update(cparams)
+        # So a chave testada: cparams tem a senha, e uma falha mostraria o dicionario
+        capturados["connect_timeout"] = cparams.get("connect_timeout")
 
     event.listen(database.engine, "do_connect", capturar)
     try:
@@ -23,4 +24,26 @@ def test_engine_da_aplicacao_usa_connect_timeout():
     finally:
         event.remove(database.engine, "do_connect", capturar)
 
-    assert capturados.get("connect_timeout") == database.CONNECT_TIMEOUT_SEGUNDOS
+    timeout = capturados["connect_timeout"]
+    assert timeout == database.CONNECT_TIMEOUT_SEGUNDOS
+
+
+def test_engine_do_worker_usa_connect_timeout():
+    from app.jobs import worker
+
+    capturados = {}
+
+    def capturar(dialect, conn_rec, cargs, cparams):
+        # So a chave testada: cparams tem a senha, e uma falha mostraria o dicionario
+        capturados["connect_timeout"] = cparams.get("connect_timeout")
+
+    event.listen(worker.engine_worker, "do_connect", capturar)
+    try:
+        worker.engine_worker.dispose()  # forca uma conexao nova
+        with worker.engine_worker.connect() as conexao:
+            conexao.execute(text("SELECT 1"))
+    finally:
+        event.remove(worker.engine_worker, "do_connect", capturar)
+
+    timeout = capturados["connect_timeout"]
+    assert timeout == database.CONNECT_TIMEOUT_SEGUNDOS
