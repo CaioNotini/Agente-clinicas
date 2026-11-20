@@ -14,7 +14,7 @@ Outubro de 2026 · versão 2.1 · documento de referência para os sócios e par
 
 O produto é um agente de IA que atende clínicas pelo WhatsApp. Ele agenda, remarca e cancela consultas, envia lembretes para reduzir no-show e responde dúvidas administrativas. Não faz orientação clínica.
 
-A clínica acompanha tudo por um **painel de monitoramento**: vê a agenda, o histórico das conversas e as métricas, e assume uma conversa quando o agente encaminha o caso para a recepção. Quando há handoff, a recepção é avisada no WhatsApp pessoal de quem está de plantão, com link direto para a conversa no painel.
+A clínica acompanha tudo por um **painel de monitoramento**: vê a agenda, o histórico das conversas e as métricas, e assume uma conversa quando o agente encaminha o caso para o responsável pelo atendimento humano. Quando há handoff, esse responsável é avisado no WhatsApp pessoal de plantão, com link direto para a conversa no painel. O responsável é configurado pela clínica e pode ser uma recepção ou o próprio profissional, porque consultórios de um profissional só fazem parte do público-alvo ([ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md)).
 
 A arquitetura é um backend Python (FastAPI) com um worker que processa mensagens a partir de uma fila no PostgreSQL. Cada mensagem é classificada, passa por uma máquina de estados explícita com lock por conversa, e só então aciona o modelo de IA (Claude Haiku) por meio de ferramentas determinísticas. Regras de negócio ficam em código comum e testado. A IA interpreta e redige. Um único banco PostgreSQL (Supabase no MVP) atende todas as clínicas, com `tenant_id` em toda tabela e Row Level Security.
 
@@ -60,14 +60,14 @@ Decisões com status **Travada** não são revisitadas sem nova versão deste do
 | D-19 | Hospedagem da aplicação na Lightsail, instância única, container Docker                                                                                                                                                                                         | Travada                                       | Elastic Beanstalk e EC2 com Auto Scaling: mais peças AWS para um piloto de instância única                                                                                                                     |
 | D-20 | Observabilidade: métricas da Lightsail (infra) e log estruturado no Postgres (produto e agente)                                                                                                                                                                 | Travada                                       | Stack dedicada de observabilidade: mais um serviço para manter                                                                                                                                                 |
 | D-21 | Supabase Free na demo, Pro no piloto com dado real                                                                                                                                                                                                              | Travada                                       | Free no piloto: sem backup diário e com pausa por inatividade                                                                                                                                                  |
-| D-22 | **Painel de monitoramento no MVP** (substitui a decisão anterior de não ter painel). A clínica vê agenda, conversas, handoffs e métricas, e assume conversas. Resumo diário pelo WhatsApp continua como complemento                                             | Travada (revisa a versão 2.0 deste documento) | Sem painel: a recepção não teria como acompanhar nem assumir conversas                                                                                                                                         |
+| D-22 | **Painel de monitoramento no MVP** (substitui a decisão anterior de não ter painel). A clínica vê agenda, conversas, handoffs e métricas, e assume conversas. Resumo diário pelo WhatsApp continua como complemento                                             | Travada (revisa a versão 2.0 deste documento) | Sem painel: o responsável pelo atendimento não teria como acompanhar nem assumir conversas                                                                                                                     |
 | D-23 | Sem Multi-AZ e sem VPC privada no banco. Conexão TLS com restrição de IP de origem quando disponível                                                                                                                                                            | Travada (tradeoff aceito)                     | RDS em VPC: custo e operação que o orçamento não comporta                                                                                                                                                      |
 | D-24 | Tokens da Meta no AWS Secrets Manager. Credencial IAM de permissão mínima na Lightsail, rotacionada                                                                                                                                                             | Travada                                       | Token em variável de ambiente ou planilha: risco de segurança                                                                                                                                                  |
 | D-25 | Escopo clínico: o produto é atendimento administrativo. Qualquer orientação de saúde está fora                                                                                                                                                                  | Travada                                       | —                                                                                                                                                                                                              |
 | D-26 | Tabelas `handoffs`, `consents` e `privacy_requests` criadas no schema inicial. `consents` e `privacy_requests` ficam vazias até o piloto                                                                                                                        | Travada                                       | Criar depois: reconstruir consentimento retroativamente não é auditável                                                                                                                                        |
 | D-27 | Dado fictício em todo ambiente de estudo, testes e demo                                                                                                                                                                                                         | Travada                                       | —                                                                                                                                                                                                              |
 | D-28 | Cronograma por ordem de dependência, sem prazo. Não há estimativa de semanas                                                                                                                                                                                    | Travada                                       | Calendário fixo: não reflete a disponibilidade part-time                                                                                                                                                       |
-| D-29 | Handoff com notificação no WhatsApp pessoal da recepção de plantão. A resposta ao paciente é feita no painel, e sai pelo número oficial da clínica (ver seção 8.4)                                                                                              | Travada                                       | Transferir a conversa para o WhatsApp pessoal: a conversa da Cloud API não pode sair do número oficial                                                                                                         |
+| D-29 | Handoff com notificação no WhatsApp pessoal do responsável configurado pela clínica de plantão (recepção ou o próprio profissional, [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md)). A resposta ao paciente é feita no painel, e sai pelo número oficial da clínica (ver seção 8.4)                                                | Travada                                       | Transferir a conversa para o WhatsApp pessoal: a conversa da Cloud API não pode sair do número oficial                                                                                                         |
 | D-30 | Valores comerciais (mensalidade, taxa de implantação) definidos após o desenvolvimento                                                                                                                                                                          | Travada                                       | —                                                                                                                                                                                                              |
 | D-31 | Metas de sucesso do piloto não definidas agora                                                                                                                                                                                                                  | Em aberto (Q-15)                              | —                                                                                                                                                                                                              |
 
@@ -92,7 +92,7 @@ Decisões com status **Travada** não são revisitadas sem nova versão deste do
 
 ```
                     ┌─────────────────────────────┐
-  Paciente ──────►  │ WhatsApp (Meta Cloud API)   │ ◄── Recepção (painel)
+  Paciente ──────►  │ WhatsApp (Meta Cloud API)   │ ◄── Responsável (painel)
                     └──────────────┬──────────────┘
                                    │ webhook (assinatura X-Hub-Signature-256)
                                    ▼
@@ -181,15 +181,15 @@ Um banco, `tenant_id` em toda tabela. Nomes idênticos entre estudo e MVP.
 
 | Tabela                                                                    | Etapa                | Conteúdo                                                                                       |
 | ------------------------------------------------------------------------- | -------------------- | ---------------------------------------------------------------------------------------------- |
-| `clinicas`                                                                | 2                    | Tenant e configuração como dado (tom de voz, regras, horário, telefone de plantão da recepção) |
-| `profissionais`, `servicos`, `profissional_servicos`, `horarios_trabalho` | 2                    | Base da agenda                                                                                 |
-| `regras_agendamento`                                                      | 2                    | Antecedência mínima e máxima, janela de cancelamento                                           |
+| `clinicas`                                                                | 2 (base) e 5 (config de fuso e handoff) | Tenant e configuração como dado (tom de voz, regras, horário, telefone de plantão, `fuso` IANA, `handoff_prazo_resposta_minutos`, `handoff_texto_paciente`). O telefone de plantão é do responsável pelo atendimento humano configurado pela clínica, recepção ou o próprio profissional ([ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md)) |
+| `profissionais`, `servicos`, `profissional_servicos`, `horarios_trabalho` | 2 (base) e 5 (`profissional_servicos.duracao_minutos`) | Base da agenda. `servicos.duracao_minutos` é a duração padrão, e `profissional_servicos.duracao_minutos` é o override opcional por profissional (Q-21) |
+| `regras_agendamento`                                                      | 2 (base) e 5 (política de cancelamento) | Antecedência mínima e máxima, janela de cancelamento, `politica_cancelamento_fora_janela` (`handoff` ou `aceitar_e_marcar`, Q-22) |
 | `pacientes_contatos`                                                      | 2                    | Nome e telefone, sem prontuário                                                                |
 | `conversas`                                                               | 2                    | `estado_conversa`, `human_mode`, `contato_telefone`                                            |
 | `mensagens`                                                               | 2                    | `mensagens.id` como chave primária                                                             |
 | `jobs`                                                                    | 2 (schema) e 3 (uso) | `type`, `payload`, `contato_telefone`, `status`, `run_at`, `attempts`, `locked_at`, `locked_by`, `last_error`. Ordem por conversa no [ADR 0005](./decisions/0005-ordem-por-conversa.md) |
-| `agendamentos`                                                            | 5                    | `profissional_id`, `servico_id`, `contato_telefone`, `inicio`, `fim`, `status`                 |
-| `handoffs`                                                                | 2 (schema) e 5 (uso) | Conversa, motivo, notificação enviada, quem assumiu, início e devolução ao bot                 |
+| `agendamentos`                                                            | 5                    | `profissional_id`, `servico_id`, `contato_telefone`, `inicio`, `fim`, `status`, `cancelado_fora_da_janela` (marca de cancelamento tardio, Q-22) |
+| `handoffs`                                                                | 2 (schema) e 5 (uso) | Conversa, motivo, notificação enviada (`notificado_em`, `notificado_para`, `notificado_canal`, Q-24), quem assumiu, início e devolução ao bot |
 | `conhecimento_clinica`                                                    | 8                    | Chunks com embedding, `categoria` (permitido/bloqueado) e modelo de embedding                  |
 | `log_auditoria`                                                           | 2 (schema) e 7 (uso) | Toda mensagem `clinico_bloqueado` ou `urgencia`, com categoria e texto original                |
 | `lembretes`                                                               | 11                   | `enviar_em`, `status`, resposta do paciente                                                    |
@@ -204,6 +204,8 @@ CREATE INDEX idx_lembretes_pendentes ON lembretes (enviar_em) WHERE status = 'pe
 ```
 
 Em `agendamentos`, as colunas `inicio` e `fim` usam `timestamptz`, com os instantes gravados em UTC. Esta é a única exceção no schema, onde as demais tabelas usam `timestamp` sem fuso. O conflito de horário entre agendamentos ativos do mesmo profissional é garantido por uma constraint `EXCLUDE` com intervalo semiaberto `[inicio, fim)`, descrita no [ADR 0004](./decisions/0004-conflito-de-horario.md).
+
+O armazenamento é sempre em UTC, mas as regras de antecedência, janela de cancelamento e lembretes usam o fuso da clínica, definido em `clinicas.fuso` como nome IANA (default `America/Sao_Paulo`). A conversão para o fuso da clínica fica numa função única, e o nome do fuso é validado antes de gravar (Q-23, [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md)).
 
 Valores fixos, iguais no estudo e no MVP:
 
@@ -236,7 +238,7 @@ Se human_mode = true → não responde. A mensagem aparece no painel
 Classificação (categoria + confiança)
  ├─ administrativo / agendamento  → RAG / function calling
  ├─ clinico_bloqueado             → mensagem fixa + handoff + log_auditoria
- ├─ urgencia                      → mensagem de segurança fixa + handoff urgente + log_auditoria
+ ├─ urgencia                      → mensagem de segurança fixa (192 ou pronto-socorro, incondicional) + log_auditoria. O handoff é secundário e não é a via de resposta prometida ao paciente
  └─ ambiguo, ou confiança < 0,7   → 1 esclarecimento → handoff se persistir
  ↓
 Channel.send_text(...)
@@ -274,7 +276,7 @@ Para cada um: cria job SEND_REMINDER (run_at = agora) e marca como 'enfileirado'
 Resposta do paciente → classificação restrita (confirmar / cancelar / remarcar / dúvida)
  ↓
 Sem resposta ao T-7 → nenhum lembrete adicional. O próximo passo é o T-1
-Sem resposta ao T-1 → handoff para a recepção (seção 8.4)
+Sem resposta ao T-1 → handoff para o responsável configurado pela clínica (seção 8.4)
 ```
 
 Regras complementares:
@@ -293,9 +295,15 @@ Três camadas, em ordem:
 
 1. **Ferramentas.** O modelo só pode chamar as quatro ferramentas da seção 7. Não existe ferramenta para responder sobre saúde.
 2. **Classificação com confiança.** Antes de gerar texto livre, a mensagem é classificada. Confiança abaixo de 0,7 vira `ambiguo`. A assimetria é deliberada: na dúvida, o sistema escala em vez de responder.
-3. **Mensagens fixas.** `clinico_bloqueado` e `urgencia` respondem com texto aprovado previamente, idealmente revisado por alguém com formação clínica antes do piloto. Exemplo:
+3. **Mensagens fixas.** `clinico_bloqueado` e `urgencia` respondem com texto aprovado previamente, idealmente revisado por alguém com formação clínica antes do piloto.
 
-> "Essa é uma pergunta que só [nome da clínica] pode responder com segurança. Vou te conectar com a recepção agora."
+A de `clinico_bloqueado` não cita recepção e não promete resposta imediata, porque num consultório solo pode não haver ninguém monitorando o handoff na hora. Exemplo:
+
+> "Essa é uma pergunta que só a equipe de [nome da clínica] pode responder com segurança. Vou registrar seu contato para que o responsável pelo atendimento retorne."
+
+A de `urgencia` orienta o paciente a procurar o serviço de emergência de forma incondicional e imediata, e nunca depende do handoff nem usa o texto de handoff da clínica ([ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md)). Exemplo:
+
+> "Se isto for uma emergência, ligue 192 (SAMU) ou procure o pronto-socorro mais próximo agora. Este canal não faz atendimento de urgência."
 
 **Linha de corte:** se a resposta muda conforme o estado de saúde da pessoa, é fora do escopo. Se é igual para qualquer paciente, é administrativo.
 
@@ -305,27 +313,29 @@ Três camadas, em ordem:
 
 Um handoff é aberto quando: a mensagem é `clinico_bloqueado` ou `urgencia`, a conversa cai em `escalada`, ou o paciente não é entendido após o esclarecimento.
 
+O responsável pelo atendimento humano é configurado pela clínica e pode ser uma recepção ou o próprio profissional. O aviso vai para `clinicas.telefone_plantao`, seja de quem for ([ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md)).
+
 ```
 Handoff aberto → grava em handoffs e muda estado_conversa para 'escalada'
  ↓
-Job NOTIFY_HANDOFF → envia template ao WhatsApp pessoal da recepção de plantão
+Job NOTIFY_HANDOFF → envia template ao WhatsApp pessoal do responsável de plantão
  (número em clinicas.telefone_plantao. Inclui motivo e link para a conversa no painel)
  ↓
-Recepção abre o painel e lê o histórico
+Responsável abre o painel e lê o histórico
  ↓
 "Assumir conversa" → human_mode = true. O bot para de responder nesta conversa.
  ↓
-Recepção responde pelo painel → sai pelo número oficial da clínica
+Responsável responde pelo painel → sai pelo número oficial da clínica
  ↓
 "Devolver ao bot" ou encerramento → human_mode = false. Registra fim no handoff
 ```
 
 Pontos que precisam ficar claros:
 
-- **A conversa não sai do número oficial.** A conversa do paciente continua no número da Cloud API, e a recepção responde pelo painel. O WhatsApp pessoal serve só para avisar e levar ao painel. Se a intenção for que a recepção converse diretamente pelo WhatsApp pessoal, isso é outro produto, fora do MVP (Q-18).
-- **Janela de 24 horas.** Se a recepção responder depois de 24 horas da última mensagem do paciente, a resposta só é aceita com template aprovado pela Meta. O painel precisa avisar isso.
-- **Notificação com template.** O aviso ao WhatsApp pessoal da recepção também é um template aprovado, porque é mensagem iniciada pelo negócio.
-- **Cada tentativa de handoff é registrada** em `handoffs`, incluindo quem foi notificado, quando, e quem assumiu.
+- **A conversa não sai do número oficial.** A conversa do paciente continua no número da Cloud API, e o responsável responde pelo painel. O WhatsApp pessoal serve só para avisar e levar ao painel. Se a intenção for que o responsável converse diretamente pelo WhatsApp pessoal, isso é outro produto, fora do MVP (Q-18).
+- **Janela de 24 horas.** Se o responsável responder depois de 24 horas da última mensagem do paciente, a resposta só é aceita com template aprovado pela Meta. O painel precisa avisar isso.
+- **Notificação com template.** O aviso ao WhatsApp pessoal do responsável também é um template aprovado, porque é mensagem iniciada pelo negócio.
+- **Cada tentativa de handoff é registrada** em `handoffs`, incluindo quem foi notificado (`notificado_para` e `notificado_canal`), quando (`notificado_em`), e quem assumiu.
 
 ## 9. Ambientes, deploy e testes
 
@@ -367,11 +377,11 @@ O ambiente local precisa de credencial IAM de permissão mínima, com acesso ao 
 | Atendimento via WhatsApp com agente de IA                              | Adaptadores de Google Calendar, iClinic e Feegow                                                                |
 | Agendamento, remarcação e cancelamento                                 | Celery e Redis                                                                                                  |
 | Lembretes T-7 e T-1 com regras de borda                                | Multi-AZ e VPC privada                                                                                          |
-| RAG por clínica com filtro de categoria                                | Conversa transferida para o WhatsApp pessoal da recepção                                                        |
+| RAG por clínica com filtro de categoria                                | Conversa transferida para o WhatsApp pessoal do responsável                                                     |
 | Handoff com notificação e takeover pelo painel                         | Deploy em containers gerenciados e autoscaling                                                                  |
 | **Painel de monitoramento** com agenda, conversas, handoffs e métricas | Observabilidade dedicada (Langfuse etc.)                                                                        |
 | Login do painel, com acesso restrito à própria clínica                 | Fluxo self-service de conexão de WhatsApp                                                                       |
-| Resumo diário pelo WhatsApp da recepção                                | Tela de consentimento, wording jurídico e atendimento automatizado de pedidos de privacidade (depois do piloto) |
+| Resumo diário pelo WhatsApp do responsável                             | Tela de consentimento, wording jurídico e atendimento automatizado de pedidos de privacidade (depois do piloto) |
 | Configuração por clínica como dado                                     | Valores comerciais (definidos depois do desenvolvimento)                                                        |
 | Schema de consentimento e direitos do titular, ainda vazio             | MCP e prompt caching como requisitos (são opcionais)                                                            |
 | Teste de isolamento entre clínicas                                     |                                                                                                                 |
@@ -401,7 +411,7 @@ Qualquer decisão técnica (D-xx) ou questão em aberto (Q-xx) citada nas entreg
 
 ## 13. Questões em aberto
 
-As questões Q-01 a Q-19 não bloqueiam as etapas 0 a 5. As questões Q-20 a Q-24 precisam de resposta na especificação da etapa 5. A coluna "Responder até" indica a etapa em que precisam de resposta.
+As questões Q-01 a Q-19 não bloqueiam as etapas 0 a 5. As questões Q-20 a Q-24 eram da especificação da etapa 5 e estão resolvidas: Q-20 pela tarefa 5.5 e Q-21 a Q-24 pelo [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md). A coluna "Responder até" indica a etapa em que precisam de resposta.
 
 | #    | Questão                                                                                                                                                                                                                                                                                                                                         | Responder até                           |
 | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
@@ -425,10 +435,10 @@ As questões Q-01 a Q-19 não bloqueiam as etapas 0 a 5. As questões Q-20 a Q-2
 | Q-18 | **Conversa no WhatsApp pessoal:** confirmar se o modelo do MVP é o de notificar a recepção e responder pelo painel (D-29), ou se a recepção precisa conversar diretamente pelo WhatsApp pessoal, o que seria outro produto                                                                                                                      | Antes da etapa 13                       |
 | Q-19 | **Dedupe de mensagens por `(tenant_id, id)`.** A chave primária de `mensagens` é global, e hoje uma colisão de id entre clínicas levanta `ColisaoIdEntreTenants`. Avaliar quando o id passar a vir da Meta                                                                                                                                      | Etapa 17                                |
 | Q-20 | **Paciente no agendamento.** Resolvida pela tarefa 5.5: `agendamentos` guarda `contato_telefone` (seção 7), a mesma chave de `conversas` e de `pacientes_contatos` dentro da clínica                                                                                                                                              | Etapa 5                                 |
-| Q-21 | **Duração da consulta.** `servicos.duracao_minutos` guarda a duração por serviço, e a clínica fictícia define a duração por profissional. Definir qual vale no cálculo de conflito de horário                                                                                                                                                   | Etapa 5                                 |
-| Q-22 | **Cancelamento fora da janela.** Definir se um pedido de cancelamento feito com menos antecedência que a janela de cancelamento é rejeitado ou vira handoff para a recepção                                                                                                                                                                     | Etapa 5                                 |
-| Q-23 | **Fuso horário.** `agendamentos.inicio` e `agendamentos.fim` são `timestamptz` em UTC, e `AgendaPropria.criar` rejeita horários sem fuso. Ainda não existe conversão para o fuso local. Falta definir como cada clínica informa o próprio fuso local, qual fuso vale para as regras de antecedência, a janela de cancelamento e os lembretes, e onde entra a conversão para exibição ao paciente | Etapa 5 (regras) / Etapa 11 (lembretes) |
-| Q-24 | **Quem foi notificado no handoff.** A seção 8.4 pede o registro de quem foi notificado, e a tabela `handoffs` só tem `notificado_em`. Definir se o schema ganha esse campo                                                                                                                                                                      | Etapa 5                                 |
+| Q-21 | **Duração da consulta.** Resolvida pelo [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md): `servicos.duracao_minutos` é a duração padrão, e `profissional_servicos.duracao_minutos` é o override opcional por profissional. O fim do agendamento usa o override quando ele existe                                                       | Etapa 5 (resolvida)                     |
+| Q-22 | **Cancelamento fora da janela.** Resolvida pelo [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md): política configurável por clínica em `regras_agendamento.politica_cancelamento_fora_janela`. `handoff` (padrão) abre handoff e só cancela após decisão humana. `aceitar_e_marcar` cancela na hora e marca `agendamentos.cancelado_fora_da_janela` | Etapa 5 (resolvida)                     |
+| Q-23 | **Fuso horário.** Resolvida pelo [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md): fuso por clínica em `clinicas.fuso` (nome IANA, default `America/Sao_Paulo`). As regras de antecedência, janela de cancelamento e lembretes usam o fuso da clínica. O armazenamento continua em UTC, e a conversão fica numa função única. A conversão para exibição ao paciente entra quando houver canal que exiba horário | Etapa 5 (resolvida)                     |
+| Q-24 | **Quem foi notificado no handoff.** Resolvida pelo [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md): `handoffs` ganha `notificado_para` e `notificado_canal`, ao lado de `notificado_em`. O destinatário continua sendo `clinicas.telefone_plantao`                                                                                   | Etapa 5 (resolvida)                     |
 
 ## 14. Riscos
 
@@ -437,8 +447,8 @@ As questões Q-01 a Q-19 não bloqueiam as etapas 0 a 5. As questões Q-20 a Q-2
 | Falso negativo em classificação clínica (mensagem clínica tratada como administrativa) | Alto: risco de saúde e reputacional    | Assimetria do threshold, mensagens fixas, recall medido na suíte de avaliação, auditoria                                     |
 | Vazamento entre clínicas por erro de aplicação, inclusive no painel                    | Alto                                   | RLS, role de worker separada, teste de isolamento obrigatório cobrindo o painel                                              |
 | Agendamento duplicado por concorrência                                                 | Médio                                  | Duas travas (`SKIP LOCKED` e `FOR UPDATE`), testes de concorrência                                                           |
-| Handoff sem resposta da recepção                                                       | Alto para o paciente                   | Notificação com template, lembrete de handoff sem resposta em X minutos (a definir), handoff registrado com quem foi avisado |
-| Expectativa de que a recepção converse pelo WhatsApp pessoal                           | Médio: mudança de produto              | Esclarecer antes da etapa 13 (Q-18)                                                                                          |
+| Handoff sem resposta do responsável                                                    | Alto para o paciente                   | Notificação com template, lembrete de handoff sem resposta em X minutos (a definir), handoff registrado com quem foi avisado. A urgência não depende do handoff (ADR 0009) |
+| Expectativa de que o responsável converse pelo WhatsApp pessoal                        | Médio: mudança de produto              | Esclarecer antes da etapa 13 (Q-18)                                                                                          |
 | Sem VPC privada no banco                                                               | Médio                                  | TLS, allowlist de IP, credencial rotacionada, RLS                                                                            |
 | Credencial IAM guardada na Lightsail                                                   | Médio                                  | Permissão mínima, rotação, sem acesso administrativo                                                                         |
 | Custo acima do teto                                                                    | Médio                                  | Métrica de custo por conversa, prompt caching, decisão antecipada                                                            |

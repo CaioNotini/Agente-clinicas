@@ -18,6 +18,7 @@ Este diretório registra decisões tomadas durante a implementação que ainda n
 - [0006: Provisionamento das roles automatizadas](./0006-provisionamento-de-roles.md)
 - [0007: FKs compostas com tenant_id](./0007-fks-compostas-por-tenant.md)
 - [0008: Conclusão atômica do job](./0008-conclusao-atomica-do-job.md)
+- [0009: Agendamento e handoff da etapa 5 sem presumir recepção](./0009-agendamento-handoff-etapa5.md)
 
 ## Convenção de nomes
 

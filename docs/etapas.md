@@ -158,7 +158,7 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
   - 5.4 abertura de handoff na tabela `handoffs`. Nesta etapa só grava, sem mudar o estado da conversa.
 - **Código:** `migrations/versions/`, `app/db/models.py`, `app/agenda/`, `app/handoff/`, `tests/unit/`, `tests/integration/`, `tests/concurrency/`, `tests/isolation/`.
 - **Critério de pronto:** cada regra tem teste unitário, incluindo os casos de borda, e um handoff gravado aparece no banco.
-- **Fora do escopo:** notificação real à recepção, que começa na etapa 13.
+- **Fora do escopo:** notificação real ao responsável pelo atendimento humano configurado pela clínica, que começa na etapa 13.
 
 ---
 
@@ -277,7 +277,7 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
 
 - **Depende de:** etapas 7 e 12.
 - **Base:** D-29, seção 8.4 da arquitetura e Q-18.
-- **Objetivo:** abrir handoffs com motivo, notificar a recepção, pausar o bot na conversa e devolvê-la ao bot quando a recepção terminar.
+- **Objetivo:** abrir handoffs com motivo, notificar o responsável configurado pela clínica, pausar o bot na conversa e devolvê-la ao bot quando o responsável terminar.
 - **Tarefas:**
   - 13.1 abertura de handoff com motivo. Inclui a transição da conversa para `escalada`, validada pelo grafo de [`decisions/0003-grafo-de-transicoes.md`](./decisions/0003-grafo-de-transicoes.md). A etapa 5 só grava o handoff, sem mudar o estado.
   - 13.2 job `NOTIFY_HANDOFF`, com canal simulado no estudo.
