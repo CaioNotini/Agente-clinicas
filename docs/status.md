@@ -6,14 +6,15 @@ Relaciona-se com: etapas.md, estudo.md, arquitetura.md, principios.md, decisions
 
 # Status do projeto
 
-Estado verificado em 2026-11-18. O histórico detalhado de cada mudança fica no git log e nos [ADRs](./decisions/README.md).
+Estado verificado em 2026-11-20. O histórico detalhado de cada mudança fica no git log e nos [ADRs](./decisions/README.md).
 
 ## Onde estamos
 
 **Etapa ativa: 5, agendamento e handoff determinísticos.** Critérios de pronto em [`etapas.md`](./etapas.md).
 
 - Feitas: 5.5 (tabela `agendamentos`, conflito pelo [ADR 0004](./decisions/0004-conflito-de-horario.md)) e 5.1 (`AgendaProvider` e `AgendaPropria`).
-- Faltam: 5.2 (regras), 5.3 (criar, remarcar e cancelar) e 5.4 (handoff).
+- As decisões do [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md) (Q-21 a Q-24) estão implementadas como blocos reutilizáveis: schema novo, conversão de fuso (`app/core/fuso.py`), regras puras de duração e cancelamento (`app/agenda/regras.py`) e mensagens fixas (`app/mensagens/fixas.py`).
+- Faltam: 5.2 (reunir as regras no fluxo), 5.3 (criar, remarcar e cancelar, que usam esses blocos) e 5.4 (handoff).
 - O pré-requisito da 5.3, a conclusão atômica do job, está pronto ([ADR 0008](./decisions/0008-conclusao-atomica-do-job.md)).
 - A 5.5 e a 5.1 foram feitas antes de a etapa 4 fechar, contra a regra de dependência de [`etapas.md`](./etapas.md). O desvio foi aceito pelo desenvolvedor.
 
@@ -26,10 +27,10 @@ Estado verificado em 2026-11-18. O histórico detalhado de cada mudança fica no
 
 ## O que está verificado
 
-Última verificação em 2026-11-18, no banco do Docker local:
+Última verificação em 2026-11-20, no banco do Docker local:
 
-- `pytest tests/ -v`: `206 passed`.
-- Ciclo de migrations (`upgrade head`, `downgrade base`, `upgrade head`), `alembic check` e [`scripts/verificar_pks.sql`](../scripts/verificar_pks.sql) passaram. Head: `b5e8d3f0a7c4`.
+- `pytest tests/ -q`: `250 passed`.
+- Ciclo de migrations (`upgrade head`, `downgrade base`, `upgrade head`), `alembic check` e [`scripts/verificar_pks.sql`](../scripts/verificar_pks.sql) passaram. Head: `45ba5d9bc62d`.
 - Setup do zero só pelo [`README.md`](../README.md), num clone limpo, passou.
 - pylint, black e isort passam e reprovam a CI quando falham.
 
