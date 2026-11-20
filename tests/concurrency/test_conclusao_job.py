@@ -65,6 +65,20 @@ def _job(job_id):
         ).first()
 
 
+def _esperar_locked_by(job_id, worker_id, prazo=5.0, intervalo=0.02):
+    """Espera o job passar a pertencer a worker_id, confirmado no banco.
+
+    Confirma a recaptura sem depender de tempo fixo: faz poll do locked_by ate o
+    prazo. Retorna True assim que confirma, False se o prazo esgotar.
+    """
+    limite = time.monotonic() + prazo
+    while time.monotonic() < limite:
+        if _job(job_id).locked_by == worker_id:
+            return True
+        time.sleep(intervalo)
+    return False
+
+
 def _processamento_com_efeito(antes_de_concluir=None, falhar=False):
     """Processamento como o da aplicacao: efeito e conclusao na sessao da conversa."""
     from app.jobs.queue import concluir_job
@@ -117,25 +131,55 @@ def test_queda_entre_efeito_e_conclusao_pelo_worker_nao_duplica(tenant, monkeypa
 
 
 def test_recaptura_durante_processamento_lento_confirma_um_efeito(tenant):
-    """B recaptura o job enquanto A ainda processa. So o dono atual confirma."""
+    """B recaptura o job enquanto A ainda processa. So o dono atual confirma.
+
+    Sincronizacao deterministica por threading.Event, sem sleep de tempo fixo. A
+    grava o efeito e para num Event; o teste confirma a recaptura por B no banco e
+    so entao libera A. A tenta concluir, nao e mais o dono e desfaz os efeitos; B
+    conclui. B tambem roda numa thread: ao processar, ele espera o lock da conversa
+    que A segura, entao chama-lo na thread principal travaria o teste antes de
+    liberar A (deadlock).
+    """
     job_id = _enfileirar(tenant)
-    a_no_meio = threading.Event()
+
+    # A inseriu o efeito e chegou ao ponto de espera
+    a_gravou_efeito = threading.Event()
+    # O teste autoriza A a tentar concluir
+    liberar_a = threading.Event()
 
     def segurar(job):
-        a_no_meio.set()
-        time.sleep(1.0)
+        a_gravou_efeito.set()
+        # Timeout de seguranca: se o teste falhar antes de liberar, A nao fica presa.
+        liberar_a.wait(timeout=10)
 
-    thread_a = threading.Thread(
-        target=worker.processar_um,
-        args=("worker-a",),
-        kwargs={"processamento": _processamento_com_efeito(antes_de_concluir=segurar)},
-    )
+    def rodar_a():
+        worker.processar_um(
+            "worker-a",
+            processamento=_processamento_com_efeito(antes_de_concluir=segurar),
+        )
+
+    def rodar_b():
+        worker.processar_um(
+            "worker-b", processamento=_processamento_com_efeito(), limite_segundos=0
+        )
+
+    thread_a = threading.Thread(target=rodar_a)
+    thread_b = threading.Thread(target=rodar_b)
+
     thread_a.start()
-    assert a_no_meio.wait(timeout=5)
+    try:
+        assert a_gravou_efeito.wait(timeout=5), "A nao chegou ao ponto de espera"
+        # B recaptura o job (reivindicar_job grava locked_by antes de esperar o lock
+        # da conversa). So liberamos A depois de confirmar a recaptura no banco.
+        thread_b.start()
+        assert _esperar_locked_by(job_id, "worker-b"), "B nao recapturou o job a tempo"
+    finally:
+        # Libera A mesmo se a confirmacao acima falhar, para nao vazar threads.
+        liberar_a.set()
 
-    # B espera o lock da conversa, que A segura ate desfazer ou confirmar
-    worker.processar_um("worker-b", processamento=_processamento_com_efeito(), limite_segundos=0)
-    thread_a.join(timeout=8)
+    thread_a.join(timeout=10)
+    thread_b.join(timeout=10)
+    assert not thread_a.is_alive() and not thread_b.is_alive(), "worker nao terminou"
 
     assert _efeitos(tenant) == 1
     estado = _job(job_id)
