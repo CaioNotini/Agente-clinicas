@@ -43,6 +43,17 @@ class Clinica(Base):
     email = Column(String(200))
     telefone = Column(String(20))
     telefone_plantao = Column(String(20))
+    # Fuso IANA da clinica. As regras de antecedencia, janela e lembretes usam este
+    # fuso. O armazenamento continua em UTC (ADR 0009). Validado na aplicacao ao gravar.
+    fuso = Column(
+        String(40), nullable=False, server_default=text("'America/Sao_Paulo'")
+    )
+    # Configuracao do handoff como dado (ADR 0009). O destinatario do aviso e
+    # telefone_plantao, da recepcao ou do proprio profissional.
+    # NULL em prazo significa nao informar prazo ao paciente.
+    handoff_prazo_resposta_minutos = Column(Integer)
+    # NULL em texto significa usar um texto padrao neutro.
+    handoff_texto_paciente = Column(String(500))
     ativo = Column(Boolean, default=True)
     criada_em = Column(DateTime, server_default=func.now())
 
@@ -223,9 +234,21 @@ class RegraAgendamento(Base):
     antecedencia_minima_horas = Column(Integer)
     antecedencia_maxima_dias = Column(Integer)
     janela_cancelamento_horas = Column(Integer)
+    # Politica para cancelamento feito com menos antecedencia que a janela (Q-22,
+    # ADR 0009). 'handoff' abre handoff e so cancela apos decisao humana.
+    # 'aceitar_e_marcar' cancela na hora e marca cancelado_fora_da_janela.
+    politica_cancelamento_fora_janela = Column(
+        String(20), nullable=False, server_default=text("'handoff'")
+    )
     criada_em = Column(DateTime, server_default=func.now())
 
-    __table_args__ = (UniqueConstraint("tenant_id", name="uq_regras_tenant"),)
+    __table_args__ = (
+        UniqueConstraint("tenant_id", name="uq_regras_tenant"),
+        CheckConstraint(
+            "politica_cancelamento_fora_janela IN ('handoff', 'aceitar_e_marcar')",
+            name="ck_regras_politica_cancelamento",
+        ),
+    )
 
 
 # Relação entre profissionais e os serviços que realizam
@@ -238,6 +261,9 @@ class ProfissionalServico(Base):
     )
     profissional_id = Column(Integer, nullable=False)
     servico_id = Column(Integer, nullable=False)
+    # Override opcional da duracao por profissional (Q-21, ADR 0009). NULL usa a
+    # duracao padrao do servico.
+    duracao_minutos = Column(Integer)
     criada_em = Column(DateTime, server_default=func.now())
 
     __table_args__ = (
@@ -289,6 +315,10 @@ class Handoff(Base):
     conversa_id = Column(Integer, nullable=False)
     motivo = Column(String(50), nullable=False)
     notificado_em = Column(DateTime)
+    # Quem de fato recebeu o aviso e por qual canal (Q-24, ADR 0009). O destinatario
+    # vem de clinicas.telefone_plantao, nao de um papel fixo de recepcao.
+    notificado_para = Column(String(100))
+    notificado_canal = Column(String(20))
     assumido_por = Column(String(100))
     assumido_em = Column(DateTime)
     devolvido_em = Column(DateTime)
@@ -297,6 +327,10 @@ class Handoff(Base):
     __table_args__ = (
         Index("idx_handoffs_tenant", "tenant_id"),
         Index("idx_handoffs_conversa", "conversa_id"),
+        CheckConstraint(
+            "notificado_canal IN ('cli', 'whatsapp')",
+            name="ck_handoffs_notificado_canal",
+        ),
         # FK composta: o registro pai precisa ser da mesma clinica (ADR 0007)
         ForeignKeyConstraint(
             ["tenant_id", "conversa_id"],
@@ -362,6 +396,10 @@ class Agendamento(Base):
     status = Column(
         String(20), nullable=False, server_default="agendado"
     )  # agendado (ativo) | cancelado
+    # Marca de cancelamento tardio na politica 'aceitar_e_marcar' (Q-22, ADR 0009).
+    cancelado_fora_da_janela = Column(
+        Boolean, nullable=False, server_default=text("false")
+    )
     criada_em = Column(DateTime, server_default=func.now())
 
     __table_args__ = (
