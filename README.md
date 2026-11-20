@@ -134,9 +134,11 @@ A arquitetura está em [`docs/arquitetura.md`](docs/arquitetura.md). As decisõe
 
 Todas são obrigatórias. O `app/config.py` para com erro se faltar alguma. Os exemplos são fictícios.
 
+Use `DB_HOST=127.0.0.1`, e não `localhost`. Em muitas máquinas `localhost` resolve primeiro para `::1` (IPv6). Se o container publicar a porta só em `127.0.0.1`, cada conexão espera o IPv6 cair antes de tentar o IPv4, o que trava a conexão e estoura o `connect_timeout`.
+
 | Nome                 | Para que serve                                                                 | Exemplo fictício           |
 | -------------------- | ------------------------------------------------------------------------------ | -------------------------- |
-| `DB_HOST`            | Host do Postgres                                                               | `localhost`                |
+| `DB_HOST`            | Host do Postgres. Use `127.0.0.1`, não `localhost` (ver nota abaixo)           | `127.0.0.1`                |
 | `DB_PORT`            | Porta do Postgres no host. O container expõe a 5432 nessa porta                | `5434`                     |
 | `DB_NAME`            | Nome do banco                                                                  | `agente_estudo`            |
 | `DB_USER`            | Superusuário criado pelo container. Usado só pelas migrations e pela administração | `dev_admin`            |
