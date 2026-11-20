@@ -70,7 +70,13 @@ Os comandos abaixo rodam na raiz do repositório. Onde o comando muda entre sist
    python -m scripts.definir_senhas
    ```
 
-8. Rode os testes.
+8. Instale os hooks de formatação do pre-commit (opcional, mas recomendado).
+
+   ```bash
+   pre-commit install
+   ```
+
+9. Rode os testes.
 
    ```bash
    pytest
@@ -92,6 +98,8 @@ uvicorn app.main:app --reload
 ```bash
 python -m app.jobs.worker
 ```
+
+**Formatação (pre-commit).** O [`.pre-commit-config.yaml`](.pre-commit-config.yaml) roda black e isort (`--profile black`) sobre `app/` antes de cada commit, com as mesmas versões da CI (black `23.12.0` e isort `5.13.2`). Depois de `pre-commit install`, o commit que tocar em `app/` é formatado e barrado se o código estava fora do padrão. Para rodar à mão em tudo, use `pre-commit run --all-files`. A CI continua conferindo o mesmo com `black --check` e `isort --check-only`, então o pre-commit é a primeira barreira, não a única.
 
 **CLI.** Lê mensagens da entrada padrão, grava cada uma e enfileira o job. A clínica precisa existir. Para criar uma clínica fictícia, use o superusuário do `.env` (`DB_USER` e `DB_NAME`). Dentro do container o `psql` não pede senha.
 
