@@ -71,6 +71,15 @@ class ConfiguracaoInvalida(Exception):
     """Cadastro da clinica incompleto ou invalido. Nao e uma RegraViolada."""
 
 
+class MisturaDeTenants(Exception):
+    """A lista de agendamentos recebida tem mais de uma clinica.
+
+    Segunda barreira de isolamento: a lista deveria vir de uma sessao app_clinicas,
+    sob RLS. Indica bug na carga e nunca vira resposta ao paciente, por isso fica
+    fora de RegraViolada e de ConfiguracaoInvalida.
+    """
+
+
 # --- configuracao ---------------------------------------------------------------
 
 
@@ -240,6 +249,18 @@ def intervalos_conflitam(
     return inicio_a < fim_b and inicio_b < fim_a
 
 
+def _de_um_tenant_so(agendamentos: Iterable[Agendamento]) -> list[Agendamento]:
+    """Materializa a lista e recusa mistura de clinicas antes de qualquer regra.
+
+    A checagem vem antes das regras para um agendamento de outra clinica nunca
+    virar HorarioIndisponivel ou AgendamentoDuplicado, o que revelaria que ele existe.
+    """
+    lista = list(agendamentos)
+    if len({existente.tenant_id for existente in lista}) > 1:
+        raise MisturaDeTenants("lista de agendamentos com mais de uma clinica")
+    return lista
+
+
 def verificar_conflito(
     inicio: datetime,
     fim: datetime,
@@ -251,7 +272,7 @@ def verificar_conflito(
     Serve a decisao e aos testes sem banco. Sob concorrencia, a barreira e a
     constraint EXCLUDE.
     """
-    for existente in agendamentos:
+    for existente in _de_um_tenant_so(agendamentos):
         if (
             existente.status == STATUS_AGENDADO
             and existente.profissional_id == profissional_id
@@ -271,7 +292,7 @@ def verificar_duplicidade(
     Nao ha constraint no banco: a ordem por conversa (ADR 0005) serializa os pedidos
     do mesmo contato que chegam pela fila. Ver a ressalva na secao 7 da arquitetura.
     """
-    for existente in agendamentos:
+    for existente in _de_um_tenant_so(agendamentos):
         if (
             existente.status == STATUS_AGENDADO
             and existente.contato_telefone == contato_telefone

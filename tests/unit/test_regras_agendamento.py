@@ -26,6 +26,7 @@ from app.agenda.regras import (
     ForaDoExpediente,
     HorarioIndisponivel,
     HorarioNoPassado,
+    MisturaDeTenants,
     RegrasClinica,
     RegraViolada,
     calcular_fim,
@@ -392,10 +393,10 @@ def test_expediente_sem_fuso_levanta_value_error():
 # --- conflito -------------------------------------------------------------------
 
 
-def _ag(id_, prof, contato, inicio, minutos=30, status="agendado"):
+def _ag(id_, prof, contato, inicio, minutos=30, status="agendado", tenant="t"):
     return Agendamento(
         id=id_,
-        tenant_id="t",
+        tenant_id=tenant,
         profissional_id=prof,
         servico_id=1,
         contato_telefone=contato,
@@ -473,3 +474,74 @@ def test_duplicidade_ignora_cancelados_e_outros_contatos():
         _ag(2, prof=8, contato="(00) 90000-0002", inicio=_DEZ),
     ]
     verificar_duplicidade(_DEZ, _DEZ + _MEIA, _CONTATO, existentes)
+
+
+# --- segunda barreira de isolamento ----------------------------------------------
+# A lista vem de uma sessao app_clinicas, e o RLS e a barreira principal. Uma lista
+# com dois tenants indica bug na carga e nunca vira resposta ao paciente.
+
+
+def test_mistura_de_tenants_fica_fora_das_outras_familias():
+    assert not issubclass(MisturaDeTenants, RegraViolada)
+    assert not issubclass(MisturaDeTenants, ConfiguracaoInvalida)
+
+
+@pytest.mark.parametrize(
+    "verificar,chave", [(verificar_conflito, 7), (verificar_duplicidade, _CONTATO)]
+)
+def test_lista_com_dois_tenants_levanta_mistura(verificar, chave):
+    # Nenhum dos dois agendamentos se sobrepoe: a recusa vem so da mistura
+    existentes = [
+        _ag(1, prof=7, contato=_CONTATO, inicio=_DEZ + 4 * _MEIA, tenant="clinica-a"),
+        _ag(
+            2,
+            prof=8,
+            contato="(00) 90000-0002",
+            inicio=_DEZ + 6 * _MEIA,
+            tenant="clinica-b",
+        ),
+    ]
+    with pytest.raises(MisturaDeTenants):
+        verificar(_DEZ, _DEZ + _MEIA, chave, existentes)
+
+
+@pytest.mark.parametrize(
+    "verificar,chave", [(verificar_conflito, 7), (verificar_duplicidade, _CONTATO)]
+)
+def test_mistura_vence_a_regra_violada(verificar, chave):
+    # O agendamento de outra clinica se sobrepoe. Sem a barreira, viraria
+    # HorarioIndisponivel ou AgendamentoDuplicado e revelaria dado de outra clinica.
+    existentes = [
+        _ag(
+            1,
+            prof=8,
+            contato="(00) 90000-0003",
+            inicio=_DEZ + 4 * _MEIA,
+            tenant="clinica-a",
+        ),
+        _ag(2, prof=7, contato=_CONTATO, inicio=_DEZ, tenant="clinica-b"),
+    ]
+    with pytest.raises(MisturaDeTenants):
+        verificar(_DEZ, _DEZ + _MEIA, chave, existentes)
+
+
+@pytest.mark.parametrize(
+    "verificar,chave", [(verificar_conflito, 7), (verificar_duplicidade, _CONTATO)]
+)
+def test_lista_de_um_tenant_so_e_lista_vazia_passam(verificar, chave):
+    verificar(_DEZ, _DEZ + _MEIA, chave, [])
+    existentes = [
+        _ag(1, prof=8, contato="(00) 90000-0003", inicio=_DEZ, tenant="clinica-a"),
+        _ag(2, prof=7, contato=_CONTATO, inicio=_DEZ + 4 * _MEIA, tenant="clinica-a"),
+    ]
+    verificar(_DEZ, _DEZ + _MEIA, chave, existentes)
+
+
+def test_mistura_detectada_tambem_com_gerador():
+    # A funcao aceita Iterable. Consumir o gerador uma vez so nao pode esconder a mistura.
+    existentes = (
+        _ag(i, prof=8, contato="x", inicio=_DEZ, tenant=t)
+        for i, t in ((1, "a"), (2, "b"))
+    )
+    with pytest.raises(MisturaDeTenants):
+        verificar_conflito(_DEZ, _DEZ + _MEIA, 7, existentes)
