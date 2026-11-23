@@ -69,6 +69,9 @@ def test_carga_de_agendamentos_nao_ve_outra_clinica(cenarios):
 
 
 def test_ocupacao_de_outra_clinica_nao_tira_horario_da_disponibilidade(cenarios):
+    """Regressao de regra, nao prova de isolamento: listar_ativos ja filtra pelo
+    profissional da equipe, e o agendamento da outra clinica e de outro profissional.
+    A prova de que a carga nao ve outra clinica esta no teste anterior, sem filtro."""
     _criar(cenarios["solo"])
     with conversa_travada(cenarios["equipe"]["tenant"], CONTATO) as travada:
         livres = servico.disponibilidade(
@@ -98,10 +101,14 @@ def test_cancelar_ou_remarcar_id_de_outra_clinica_nao_encontra(cenarios):
     assert (linha.status, linha.inicio) == ("agendado", INICIO)
 
 
-@pytest.mark.parametrize("trocar", ["prof", "serv"])
+@pytest.mark.parametrize("trocar", [("prof",), ("serv",), ("prof", "serv")])
 def test_profissional_ou_servico_de_outra_clinica_nao_e_oferecido(cenarios, trocar):
+    """Com os dois ids da outra clinica, o par existe la. Sem o tenant, _duracao o
+    acharia e o agendamento seria gravado: e o caso que prova o isolamento. Os pares
+    misturados nao existem em clinica nenhuma e cobrem so a regra."""
     equipe, solo = cenarios["equipe"], cenarios["solo"]
-    ids = {"prof": equipe["prof"], "serv": equipe["serv"], trocar: solo[trocar]}
+    ids = {"prof": equipe["prof"], "serv": equipe["serv"]}
+    ids.update({chave: solo[chave] for chave in trocar})
     with pytest.raises(ServicoNaoOferecido):
         _criar(equipe, prof=ids["prof"], serv=ids["serv"])
     assert agendamentos(equipe["tenant"]) == []
@@ -122,14 +129,24 @@ def test_clinica_sem_regras_nao_usa_as_regras_de_outra(cenarios):
             )
 
 
-def test_disponibilidade_com_profissional_de_outra_clinica_nao_e_oferecida(cenarios):
-    """O expediente de outra clinica nao aparece pela sessao desta."""
+def test_disponibilidade_com_profissional_e_servico_de_outra_clinica(cenarios):
+    """O par existe na outra clinica. Sem o tenant, a grade dela seria devolvida."""
     with pytest.raises(ServicoNaoOferecido):
         with conversa_travada(cenarios["equipe"]["tenant"], CONTATO) as travada:
             servico.disponibilidade(
                 travada,
                 profissional_id=cenarios["solo"]["prof"],
-                servico_id=cenarios["equipe"]["serv"],
+                servico_id=cenarios["solo"]["serv"],
                 dia=date(2027, 3, 3),
                 agora=AGORA,
             )
+
+
+def test_expediente_de_outra_clinica_nao_aparece(cenarios):
+    with conversa_travada(cenarios["equipe"]["tenant"], CONTATO) as travada:
+        alheio = AgendaPropria().expediente(travada.session, cenarios["solo"]["prof"])
+        proprio = AgendaPropria().expediente(
+            travada.session, cenarios["equipe"]["prof"]
+        )
+    assert alheio == []
+    assert proprio  # controle positivo: a leitura funciona para a propria clinica

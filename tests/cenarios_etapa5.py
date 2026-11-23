@@ -6,14 +6,17 @@ Profissionais:
 - prof e prof2: expediente da secao 6 (seg a qui 08-12 e 13:30-18, sex ate 17,
   sab 08-12);
 - prof_contiguo: quinta 08-12 e 12-14, faixas contiguas, override de 90 min;
-- prof_inativo: inativo.
+- prof_inativo: inativo;
+- prof_sem_expediente: faz o servico, sem nenhuma faixa de expediente.
 serv_outro nao e feito por prof.
 
 solo: consultorio sem recepcao (docs/fake_clinic/consultorio_solo.md). Fuso
 America/Manaus, antecedencia de 24 h a 30 dias, janela de 24 h, politica
 'aceitar_e_marcar', seg a sex 09-17, servico de 30 min com override de 60 min.
 
-sem_cadastro: sem linha em regras_agendamento e sem expediente.
+sem_cadastro: sem linha em regras_agendamento, com expediente e servico. So a falta
+de regras explica uma ConfiguracaoInvalida, entao um teste que leia as regras de
+outra clinica falha.
 
 2027-03-01 e uma segunda-feira. Em 2027, Sao Paulo e UTC-3 e Manaus e UTC-4.
 """
@@ -140,6 +143,7 @@ def semear():
             ("prof2", EXPEDIENTE_EQUIPE, None, True),
             ("prof_contiguo", EXPEDIENTE_CONTIGUO, 90, True),
             ("prof_inativo", EXPEDIENTE_EQUIPE, None, False),
+            ("prof_sem_expediente", [], None, True),
         ):
             prof = _profissional(conexao, tenant, ativo)
             _vincular(conexao, tenant, prof, serv, override)
@@ -158,6 +162,7 @@ def semear():
         prof = _profissional(conexao, tenant)
         serv = _servico(conexao, tenant, 30)
         _vincular(conexao, tenant, prof, serv)
+        _expediente(conexao, tenant, prof, EXPEDIENTE_EQUIPE)
         sem_cadastro = {"tenant": tenant, "prof": prof, "serv": serv}
     return {"equipe": equipe, "solo": solo, "sem_cadastro": sem_cadastro}
 

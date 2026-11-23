@@ -159,6 +159,15 @@ def test_clinica_sem_regras_e_configuracao_invalida(cenarios):
         _criar(cenarios["sem_cadastro"], CONTATO, T_EQUIPE)
 
 
+def test_profissional_sem_expediente_e_configuracao_invalida(cenarios):
+    with pytest.raises(ConfiguracaoInvalida):
+        _criar(cenarios["equipe"], CONTATO, T_EQUIPE, prof="prof_sem_expediente")
+    with pytest.raises(ConfiguracaoInvalida):
+        _disponibilidade(
+            cenarios["equipe"], date(2027, 3, 2), prof="prof_sem_expediente"
+        )
+
+
 def test_transacao_continua_utilizavel_depois_de_regra_violada(cenarios):
     equipe = cenarios["equipe"]
     with conversa_travada(equipe["tenant"], CONTATO) as travada:
