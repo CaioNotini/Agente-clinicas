@@ -2,8 +2,8 @@
 
 AgendaProvider e a porta de persistencia da agenda. Nesta etapa expoe apenas as
 operacoes mecanicas criar e cancelar. A arquitetura (secao 6) preve tambem a
-disponibilidade, que ainda nao tem tarefa em docs/etapas.md (item C3 do plano de
-2026-11-18, pendente em docs/status.md), por isso nao e declarada aqui.
+disponibilidade (item C3 do plano de 2026-11-18), que entra na tarefa 5.3 e usa as
+regras de expediente, conflito e antecedencia de app/agenda/regras.py.
 
 As operacoes recebem a sessao ja aberta pelo chamador, com app.tenant_id definido
 na transacao. Isso permite que o servico de remarcacao (etapa 5.3) use cancelar e
