@@ -154,7 +154,7 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
   - 5.5 tabela `agendamentos`, executada antes da 5.1. Migration, classe no modelo, constraint EXCLUDE de conflito, policy `isolamento_tenant`, entrada em `TABELAS_TENANT` e cobertura nos testes de isolamento. Colunas e conflito no [ADR 0004](./decisions/0004-conflito-de-horario.md).
   - 5.1 interface `AgendaProvider` e implementação `AgendaPropria`.
   - 5.2 regras de conflito, duplicidade, antecedência e janela de cancelamento.
-  - 5.3 criação, remarcação e cancelamento de agendamentos.
+  - 5.3 criação, remarcação e cancelamento de agendamentos, e disponibilidade no `AgendaProvider` (item C3 do [plano de 2026-11-18](./diagnosticos/2026-11-18-plano-rodada3.md)).
   - 5.4 abertura de handoff na tabela `handoffs`. Nesta etapa só grava, sem mudar o estado da conversa.
 - **Código:** `migrations/versions/`, `app/db/models.py`, `app/agenda/`, `app/handoff/`, `tests/unit/`, `tests/integration/`, `tests/concurrency/`, `tests/isolation/`.
 - **Critério de pronto:** cada regra tem teste unitário, incluindo os casos de borda, e um handoff gravado aparece no banco.

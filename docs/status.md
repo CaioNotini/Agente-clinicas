@@ -6,15 +6,15 @@ Relaciona-se com: etapas.md, estudo.md, arquitetura.md, principios.md, decisions
 
 # Status do projeto
 
-Estado verificado em 2026-11-20. O histórico detalhado de cada mudança fica no git log e nos [ADRs](./decisions/README.md).
+Estado verificado em 2026-11-23. O histórico detalhado de cada mudança fica no git log e nos [ADRs](./decisions/README.md).
 
 ## Onde estamos
 
 **Etapa ativa: 5, agendamento e handoff determinísticos.** Critérios de pronto em [`etapas.md`](./etapas.md).
 
-- Feitas: 5.5 (tabela `agendamentos`, conflito pelo [ADR 0004](./decisions/0004-conflito-de-horario.md)) e 5.1 (`AgendaProvider` e `AgendaPropria`).
+- Feitas: 5.5 (tabela `agendamentos`, conflito pelo [ADR 0004](./decisions/0004-conflito-de-horario.md)), 5.1 (`AgendaProvider` e `AgendaPropria`) e 5.2 (regras de antecedência, expediente, conflito, duplicidade e janela de cancelamento em `app/agenda/regras.py`, descritas na seção 7 da [arquitetura](./arquitetura.md) e testadas nos dois cenários).
 - As decisões do [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md) (Q-21 a Q-24) estão implementadas como blocos reutilizáveis: schema novo, conversão de fuso (`app/core/fuso.py`), regras puras de duração e cancelamento (`app/agenda/regras.py`) e mensagens fixas (`app/mensagens/fixas.py`).
-- Faltam: 5.2 (reunir as regras no fluxo), 5.3 (criar, remarcar e cancelar, que usam esses blocos) e 5.4 (handoff).
+- Faltam: 5.3 (criar, remarcar e cancelar, e disponibilidade no `AgendaProvider`) e 5.4 (handoff).
 - O pré-requisito da 5.3, a conclusão atômica do job, está pronto ([ADR 0008](./decisions/0008-conclusao-atomica-do-job.md)).
 - A 5.5 e a 5.1 foram feitas antes de a etapa 4 fechar, contra a regra de dependência de [`etapas.md`](./etapas.md). O desvio foi aceito pelo desenvolvedor.
 
@@ -27,11 +27,11 @@ Estado verificado em 2026-11-20. O histórico detalhado de cada mudança fica no
 
 ## O que está verificado
 
-Última verificação em 2026-11-20, no banco do Docker local:
+Última verificação em 2026-11-23, no banco do Docker local:
 
-- `pytest tests/ -q`: `250 passed`.
+- `pytest tests/ -q`: `323 passed`.
 - Ciclo de migrations (`upgrade head`, `downgrade base`, `upgrade head`), `alembic check` e [`scripts/verificar_pks.sql`](../scripts/verificar_pks.sql) passaram. Head: `45ba5d9bc62d`.
-- Setup do zero só pelo [`README.md`](../README.md), num clone limpo, passou.
+- Setup do zero só pelo [`README.md`](../README.md), num clone limpo, passou em 2026-11-20. Não repetido em 2026-11-23.
 - pylint, black e isort passam e reprovam a CI quando falham.
 
 O que o código garante hoje, com a decisão de cada ponto:
@@ -49,17 +49,14 @@ O que o código garante hoje, com a decisão de cada ponto:
 
 - Trocar a senha local de `worker_jobs` e rodar `python -m scripts.definir_senhas`. Ela apareceu na saída de um teste que falhou em 2026-11-18. O teste foi removido, e o `connect_timeout` do worker ficou sem teste automático.
 
-**Decisões abertas**
-
-- Disponibilidade no `AgendaProvider`: a [arquitetura](./arquitetura.md) prevê, e [`etapas.md`](./etapas.md) não tem tarefa. Entra na 5.2 ou na 5.3?
-
 **Decisões recentes**
 
+- 2026-11-23, tarefa 5.2: duplicidade é o mesmo contato com agendamento ativo sobreposto, com qualquer profissional, sem constraint, porque a ordem por conversa serializa os pedidos do mesmo contato (com a ressalva para entradas futuras fora da fila). Coluna nula em `regras_agendamento` desliga a regra, e cadastro ausente é `ConfiguracaoInvalida`, fora de `RegraViolada`. A disponibilidade (C3) entra na 5.3. Registro na seção 7 da [arquitetura](./arquitetura.md).
 - Q-21 a Q-24 da seção 13 da [arquitetura](./arquitetura.md) resolvidas pelo [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md): duração por profissional, fuso por clínica, política de cancelamento fora da janela e registro de quem foi notificado no handoff. Consultórios de um profissional só passam a ser previstos, sem presumir recepção.
 
 **Previstas para etapas futuras**
 
-- 5.3: traduzir `23P01` e `40P01` em erro de domínio, com SAVEPOINT ([ADR 0004](./decisions/0004-conflito-de-horario.md)).
+- 5.3: SAVEPOINT na inserção. `23P01` vira `HorarioIndisponivel`, e `40P01` leva a nova tentativa ([ADR 0004](./decisions/0004-conflito-de-horario.md)). `ConfiguracaoInvalida` precisa virar alerta ou handoff, não resposta de horário. A carga de agendamentos, regras e expediente pelo serviço precisa de teste de isolamento com `app_clinicas`, por exemplo o mesmo telefone com agendamento sobreposto em outra clínica não gera `AgendamentoDuplicado` (achado do `rls-reviewer` na 5.2).
 - 7: reduzir os grants de `app_clinicas`, só com pedido explícito e ADR (item A4 do [plano](./diagnosticos/2026-11-18-plano-rodada3.md)). O UPDATE em `jobs` precisa continuar, pelo ADR 0008. Os grants de `worker_jobs` também são mais amplos que o uso, como registra o ADR 0002.
 - 7: usar `validar_transicao` em toda escrita de estado (C4).
 - 9: decidir a conduta para a conversa depois de uma mensagem morta. Risco aceito até lá ([ADR 0005](./decisions/0005-ordem-por-conversa.md)).
