@@ -133,7 +133,12 @@ def cenarios():
 
 
 def _ler_config(cenario):
-    """Le fuso, regras e expediente pela sessao app_clinicas, sob RLS."""
+    """Le fuso, regras e expediente pela sessao app_clinicas, sob RLS.
+
+    Sem WHERE tenant_id de proposito: e assim que a aplicacao le, com o RLS como
+    barreira (ADR 0002). O set_config vale so nesta transacao, entao nao pode haver
+    commit entre ele e as consultas. A garantia de isolamento fica em tests/isolation/.
+    """
     session = SessionLocal()
     try:
         session.execute(
@@ -247,7 +252,16 @@ def test_profissional_sem_expediente_e_configuracao_invalida(cenarios):
 
 
 def test_config_de_uma_clinica_nao_aparece_na_sessao_da_outra(cenarios):
-    """A leitura de regras e expediente respeita o tenant da sessao."""
+    """A leitura de regras e expediente respeita o tenant da sessao.
+
+    Complementar aos testes de tests/isolation/. O controle positivo mostra que o
+    profissional da equipe tem faixas, para o [] da leitura cruzada nao passar por
+    falta de dados.
+    """
+    _, linha_equipe, faixas_equipe = _ler_config(cenarios["equipe"])
+    assert linha_equipe is not None
+    assert faixas_equipe
+
     _, linha, faixas = _ler_config(
         {
             "tenant": cenarios["sem_cadastro"]["tenant"],
