@@ -170,10 +170,12 @@ agente-clinica/
 | `Channel`         | Receber e enviar mensagem. Enviar template fora da janela de 24h           | `CliChannel`             | `WhatsAppClient`         | 3 e 17 |
 | `LLMClient`       | Completar com ferramentas e saída estruturada. Registrar tokens e latência | `AnthropicClient`        | `BedrockClient`          | 6 e 16 |
 | `EmbeddingClient` | Gerar embeddings e registrar o modelo usado                                | `BedrockEmbeddingClient` | `BedrockEmbeddingClient` | 8      |
-| `AgendaProvider`  | Disponibilidade, criar, cancelar                                           | `AgendaPropria`          | `AgendaPropria`          | 5      |
+| `AgendaProvider`  | Disponibilidade por expediente e ocupação, criar, cancelar, ler e listar   | `AgendaPropria`          | `AgendaPropria`          | 5      |
 | `ReminderService` | Enviar lembrete e registrar resposta                                       | Igual                    | Igual                    | 11     |
 
 O `LLMClient` normaliza o formato de resposta e de chamada de ferramenta. O restante do código não sabe qual provedor está por trás.
+
+O `AgendaProvider` é a porta de persistência da agenda e não aplica regras de negócio. A disponibilidade dele responde só o que uma agenda externa também saberia: os inícios livres segundo o expediente e a ocupação do profissional. As regras da clínica, como antecedência mínima e máxima, são aplicadas por cima pelo serviço de agendamento ([`app/agenda/servico.py`](../app/agenda/servico.py), tarefa 5.3).
 
 ## 7. Modelo de dados
 
@@ -213,6 +215,8 @@ O armazenamento é sempre em UTC, mas as regras de antecedência, janela de canc
 - **Expediente.** O intervalo `[inicio, fim)`, convertido para o fuso da clínica, precisa caber inteiro numa faixa ativa de `horarios_trabalho` do profissional no mesmo dia da semana (`ForaDoExpediente`). Faixas contíguas ou sobrepostas do mesmo dia valem como uma só, então 08:00 às 12:00 e 12:00 às 18:00 aceitam uma consulta das 11:30 às 12:30. Um intervalo que atravessa a meia-noite local é recusado.
 - **Conflito.** Dois agendamentos ativos do mesmo profissional conflitam se os intervalos semiabertos se sobrepõem (`HorarioIndisponivel`). É a mesma semântica da constraint `EXCLUDE` do [ADR 0004](./decisions/0004-conflito-de-horario.md), que continua sendo a barreira sob concorrência.
 - **Duplicidade.** O mesmo contato não pode ter dois agendamentos ativos com intervalos sobrepostos, com qualquer profissional (`AgendamentoDuplicado`). Horários que não se sobrepõem são permitidos, inclusive com o mesmo profissional e o mesmo serviço, para não bloquear consultas de retorno.
+- **Pedido repetido.** Se o contato pede exatamente o que já tem (mesmo profissional, mesmo início, agendamento ativo), o serviço devolve o agendamento existente, sem erro e sem gravar outro. Vale na verificação prévia e na corrida que chega ao banco como `23P01` ([ADR 0004](./decisions/0004-conflito-de-horario.md)). `AgendamentoDuplicado` fica só para outro horário sobreposto do mesmo contato.
+- **Passo da disponibilidade.** Os inícios oferecidos andam de uma duração em uma duração a partir do início de cada faixa de expediente, com as faixas contíguas juntas. A limitação é que horários quebrados não são oferecidos: com faixa às 08:00 e duração de 45 minutos, os inícios são 08:00, 08:45 e 09:30, e uma brecha que comece às 09:10 depois de um cancelamento fica de fora. Um pedido direto para esse horário continua sendo aceito, porque a criação valida o intervalo pedido, não a grade.
 - **Janela de cancelamento.** Antecedência maior ou igual à janela é cancelamento normal. Fora da janela, vale a política da clínica (Q-22). Cancelar um horário que já passou é recusado (`HorarioNoPassado`).
 - **Configuração nula ou ausente.** Uma coluna nula em `regras_agendamento` desliga a regra correspondente. Já a clínica sem linha em `regras_agendamento`, o profissional sem nenhuma faixa ativa de expediente, uma faixa ativa incompleta ou invertida e um valor negativo são erro de cadastro (`ConfiguracaoInvalida`). Esse erro fica fora da família `RegraViolada`, porque não deve virar resposta de horário indisponível ao paciente, e sim alerta ou handoff.
 - **Segunda barreira de isolamento.** As verificações de conflito e duplicidade recusam uma lista de agendamentos com mais de uma clínica (`MisturaDeTenants`), antes de aplicar a regra. A barreira principal é o RLS na carga. Esse erro indica bug, fica fora de `RegraViolada` e de `ConfiguracaoInvalida` e nunca vira resposta ao paciente.
