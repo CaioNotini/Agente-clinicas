@@ -207,6 +207,17 @@ Em `agendamentos`, as colunas `inicio` e `fim` usam `timestamptz`, com os instan
 
 O armazenamento é sempre em UTC, mas as regras de antecedência, janela de cancelamento e lembretes usam o fuso da clínica, definido em `clinicas.fuso` como nome IANA (default `America/Sao_Paulo`). A conversão para o fuso da clínica fica numa função única, e o nome do fuso é validado antes de gravar (Q-23, [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md)).
 
+**Regras de agendamento (tarefa 5.2).** São funções puras em [`app/agenda/regras.py`](../app/agenda/regras.py), aplicadas pelo serviço de agendamento antes de gravar. Cada violação levanta um erro de domínio da família `RegraViolada`.
+
+- **Antecedência.** Um início igual ou anterior ao momento do pedido é recusado (`HorarioNoPassado`). A mínima compara dois instantes, em horas (`AntecedenciaInsuficiente`). A máxima compara datas no fuso da clínica: a data local do início não pode passar da data local de hoje somada a `antecedencia_maxima_dias` (`AntecedenciaExcedida`).
+- **Expediente.** O intervalo `[inicio, fim)`, convertido para o fuso da clínica, precisa caber inteiro numa faixa ativa de `horarios_trabalho` do profissional no mesmo dia da semana (`ForaDoExpediente`). Faixas contíguas ou sobrepostas do mesmo dia valem como uma só, então 08:00 às 12:00 e 12:00 às 18:00 aceitam uma consulta das 11:30 às 12:30. Um intervalo que atravessa a meia-noite local é recusado.
+- **Conflito.** Dois agendamentos ativos do mesmo profissional conflitam se os intervalos semiabertos se sobrepõem (`HorarioIndisponivel`). É a mesma semântica da constraint `EXCLUDE` do [ADR 0004](./decisions/0004-conflito-de-horario.md), que continua sendo a barreira sob concorrência.
+- **Duplicidade.** O mesmo contato não pode ter dois agendamentos ativos com intervalos sobrepostos, com qualquer profissional (`AgendamentoDuplicado`). Horários que não se sobrepõem são permitidos, inclusive com o mesmo profissional e o mesmo serviço, para não bloquear consultas de retorno.
+- **Janela de cancelamento.** Antecedência maior ou igual à janela é cancelamento normal. Fora da janela, vale a política da clínica (Q-22). Cancelar um horário que já passou é recusado (`HorarioNoPassado`).
+- **Configuração nula ou ausente.** Uma coluna nula em `regras_agendamento` desliga a regra correspondente. Já a clínica sem linha em `regras_agendamento`, o profissional sem nenhuma faixa ativa de expediente, uma faixa ativa incompleta ou invertida e um valor negativo são erro de cadastro (`ConfiguracaoInvalida`). Esse erro fica fora da família `RegraViolada`, porque não deve virar resposta de horário indisponível ao paciente, e sim alerta ou handoff.
+
+A duplicidade não tem constraint no banco. Ela é segura sem constraint porque a ordem por conversa ([ADR 0005](./decisions/0005-ordem-por-conversa.md)) e o lock da conversa serializam todos os pedidos do mesmo contato: um pedido só é verificado depois de o anterior do mesmo contato ter sido confirmado ou desfeito. A ressalva é que essa serialização só vale para o que entra pela fila de mensagens. Entradas futuras que gravem agendamentos por outro caminho, como o painel (etapa 14) ou uma agenda externa atrás do `AgendaProvider` (D-17), não passam por ela e precisam de uma barreira própria quando existirem.
+
 Valores fixos, iguais no estudo e no MVP:
 
 - **Estados da conversa:** `idle`, `coletando_info`, `aguardando_confirmacao`, `escalada`, `encerrada`.

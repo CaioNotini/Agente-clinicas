@@ -24,7 +24,7 @@ As demais tabelas do schema guardam tempo em `timestamp` sem fuso. Agendamento p
 
 O conflito é garantido por uma constraint `EXCLUDE USING gist` em `agendamentos`, sobre `tenant_id` com igualdade, `profissional_id` com igualdade e `tstzrange(inicio, fim)` com sobreposição, restrita a `status = 'agendado'`. O intervalo é semiaberto `[inicio, fim)`, então horários adjacentes não conflitam. A constraint precisa da extensão `btree_gist` para os operadores de igualdade de `tenant_id` (uuid) e `profissional_id` (integer) dentro do índice gist. A violação chega como SQLSTATE `23P01`. Com duas gravações concorrentes do mesmo horário, a perdedora também pode receber `40P01` (deadlock detectado na verificação da constraint), observado em 2026-11-18 por [`test_conflito_agendamento.py`](../../tests/concurrency/test_conflito_agendamento.py). Nos dois casos só uma gravação é aceita. Hoje nenhum dos dois códigos é traduzido: o `AgendaPropria` deixa o erro do banco subir ao chamador.
 
-A função pura de conflito usa a mesma semântica de intervalo semiaberto, para o código e o banco concordarem. A constraint é a barreira que vale sob concorrência. A função pura serve à decisão e aos testes sem banco.
+A função pura de conflito (`intervalos_conflitam`, em [`regras.py`](../../app/agenda/regras.py), tarefa 5.2) usa a mesma semântica de intervalo semiaberto, para o código e o banco concordarem. A constraint é a barreira que vale sob concorrência. A função pura serve à decisão e aos testes sem banco.
 
 As colunas `inicio` e `fim` usam `timestamptz`, com os instantes gravados em UTC. Esta é a única exceção no schema, onde as demais tabelas usam `timestamp` sem fuso. A coluna `status` assume apenas `agendado` e `cancelado`, garantido por CHECK.
 
@@ -35,11 +35,13 @@ Uma constraint no banco não depende da ordem de execução nem de a aplicação
 ## Consequências
 
 - A imagem do banco precisa ter `btree_gist`. Confirmado na imagem `pgvector/pgvector:pg15` usada no Docker local e no CI. A migration habilita a extensão antes de criar a constraint.
-- Planejado para a tarefa 5.3, ainda não implementado: a inserção de agendamento roda dentro de um SAVEPOINT, porque o `23P01` e o `40P01` abortam a transação corrente. Nos dois códigos, o código relê sob RLS: se o conflitante for do mesmo paciente, profissional e início, devolve o existente (idempotência na corrida). Caso contrário, levanta o erro de domínio de horário indisponível.
+- Planejado para a tarefa 5.3, ainda não implementado: a inserção de agendamento roda dentro de um SAVEPOINT, porque o `23P01` e o `40P01` abortam a transação corrente. Os dois códigos têm tratamento diferente:
+  - `23P01` é conflito de fato. O código relê sob RLS: se o conflitante for do mesmo paciente, profissional e início, devolve o existente (idempotência na corrida). Caso contrário, levanta `HorarioIndisponivel`.
+  - `40P01` é deadlock, não indisponibilidade. O horário pode estar livre, porque a outra transação ainda pode ser desfeita. A operação é tentada de novo, e só um `23P01` na nova tentativa vira `HorarioIndisponivel`.
 - Agendamentos cancelados não entram no conflito, porque a constraint é restrita a `status = 'agendado'`. Remarcar marca o antigo como cancelado antes de criar o novo, na mesma transação.
 - A tabela tem RLS, FORCE e policy `isolamento_tenant`, está em `TABELAS_TENANT` e é coberta pelos testes de isolamento, como exige o CLAUDE.md. A escrita cruzada no teste de isolamento usa dados válidos e exige `match="row-level security"`, para a policy ser a única barreira.
-- O fuso por clínica fica em aberto na seção 13 de [`arquitetura.md`](../arquitetura.md). Enquanto não decidido, o código trabalha com instantes com fuso, gravados em UTC, e `AgendaPropria.criar` rejeita horários sem fuso. Ainda não existe conversão para o fuso local.
+- O fuso por clínica foi decidido no [ADR 0009](./0009-agendamento-handoff-etapa5.md). O armazenamento continua em UTC, e `AgendaPropria.criar` rejeita horários sem fuso.
 
 ## Status
 
-Aceita. Revisada em 2026-11-18: o conflito concorrente também chega como `40P01`, e a tradução dos erros fica marcada como planejada para a 5.3.
+Aceita. Revisada em 2026-11-18: o conflito concorrente também chega como `40P01`, e a tradução dos erros fica marcada como planejada para a 5.3. Revisada em 2026-11-23: só o `23P01` vira `HorarioIndisponivel`, e o `40P01` leva a uma nova tentativa. A função pura de conflito passa a existir na tarefa 5.2, e o fuso deixa de estar em aberto.

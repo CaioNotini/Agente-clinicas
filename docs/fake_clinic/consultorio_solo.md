@@ -39,6 +39,10 @@ As decisões do [ADR 0009](../decisions/0009-agendamento-handoff-etapa5.md) são
 - **Fuso (Q-23):** `America/Manaus`, UTC-4 sem horário de verão. Diferente do default `America/Sao_Paulo` de propósito, para a conversão de fuso ser exercida com outro offset.
 - **Duração (Q-21):** a duração padrão da consulta vem do serviço, e este profissional usa um override em `profissional_servicos.duracao_minutos`, diferente da duração do serviço, para o cálculo do fim usar o override.
 - **Cancelamento fora da janela (Q-22):** política `aceitar_e_marcar`. Como não há ninguém monitorando handoff na hora, um cancelamento tardio é aceito e marcado, sem abrir handoff.
+- **Antecedência mínima para agendar:** 24 horas.
+- **Antecedência máxima para agendar:** 30 dias.
+- **Janela de cancelamento:** 24 horas.
+- **Horário de atendimento:** segunda a sexta, 09:00 às 17:00, sem pausa. Sábado e domingo fechado.
 - **Handoff (Q-24):** o destinatário do aviso é o telefone de plantão acima, que é o do próprio profissional. `notificado_para` registra quem de fato recebeu.
 
 ---
