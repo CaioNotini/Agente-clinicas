@@ -29,9 +29,12 @@ from app.agenda.regras import (
     MisturaDeTenants,
     RegrasClinica,
     RegraViolada,
+    ServicoNaoOferecido,
     calcular_fim,
     classificar_cancelamento,
+    faixas_do_dia,
     intervalos_conflitam,
+    pedido_repetido,
     regras_da_clinica,
     resolver_duracao_minutos,
     validar_antecedencia,
@@ -545,3 +548,71 @@ def test_mistura_detectada_tambem_com_gerador():
     )
     with pytest.raises(MisturaDeTenants):
         verificar_conflito(_DEZ, _DEZ + _MEIA, 7, existentes)
+
+
+# --- tarefa 5.3: pedido repetido, servico nao oferecido e faixas do dia ----------
+
+
+def test_servico_nao_oferecido_e_regra_violada():
+    assert issubclass(ServicoNaoOferecido, RegraViolada)
+
+
+def test_pedido_repetido_encontra_o_mesmo_profissional_e_inicio():
+    existente = _ag(1, prof=7, contato=_CONTATO, inicio=_DEZ)
+    assert pedido_repetido(_DEZ, 7, _CONTATO, [existente]) == existente
+
+
+@pytest.mark.parametrize(
+    "existente",
+    [
+        _ag(1, prof=7, contato=_CONTATO, inicio=_DEZ, status="cancelado"),
+        _ag(1, prof=8, contato=_CONTATO, inicio=_DEZ),
+        _ag(1, prof=7, contato=_CONTATO, inicio=_DEZ + _QUINZE),
+        _ag(1, prof=7, contato="(00) 90000-0002", inicio=_DEZ),
+    ],
+)
+def test_pedido_repetido_exige_contato_profissional_inicio_e_ativo(existente):
+    assert pedido_repetido(_DEZ, 7, _CONTATO, [existente]) is None
+
+
+def test_pedido_repetido_recusa_mistura_de_tenants():
+    existentes = [
+        _ag(1, prof=7, contato=_CONTATO, inicio=_DEZ, tenant="a"),
+        _ag(2, prof=8, contato="x", inicio=_DEZ + 4 * _MEIA, tenant="b"),
+    ]
+    with pytest.raises(MisturaDeTenants):
+        pedido_repetido(_DEZ, 7, _CONTATO, existentes)
+
+
+def test_duplicidade_ignora_o_pedido_repetido():
+    # Exatamente o que o contato ja tem nao e duplicidade: o servico devolve o existente
+    existentes = [_ag(1, prof=7, contato=_CONTATO, inicio=_DEZ)]
+    verificar_duplicidade(_DEZ, _DEZ + _MEIA, _CONTATO, existentes, profissional_id=7)
+
+
+def test_duplicidade_mesmo_profissional_outro_inicio_sobreposto():
+    existentes = [_ag(1, prof=7, contato=_CONTATO, inicio=_DEZ)]
+    with pytest.raises(AgendamentoDuplicado):
+        verificar_duplicidade(
+            _DEZ + _QUINZE,
+            _DEZ + _MEIA + _QUINZE,
+            _CONTATO,
+            existentes,
+            profissional_id=7,
+        )
+
+
+def test_faixas_do_dia_junta_as_contiguas_e_ignora_outros_dias():
+    faixas = [
+        _faixa(0, time(12), time(18)),
+        _faixa(0, time(8), time(12)),
+        _faixa(0, time(19), time(20)),
+        _faixa(1, time(7), time(9)),
+    ]
+    assert faixas_do_dia(faixas, 0) == [(time(8), time(18)), (time(19), time(20))]
+    assert faixas_do_dia(faixas, 2) == []
+
+
+def test_faixas_do_dia_sem_faixa_ativa_e_configuracao_invalida():
+    with pytest.raises(ConfiguracaoInvalida):
+        faixas_do_dia([], 0)

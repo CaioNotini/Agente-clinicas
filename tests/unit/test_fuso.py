@@ -4,11 +4,11 @@ O armazenamento e sempre em UTC. As regras e a exibicao usam o fuso da clinica,
 por uma funcao unica. O nome do fuso e validado antes de gravar. tzdata entra no
 requirements porque o Windows nao traz a base de fusos do sistema.
 """
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 import pytest
 
-from app.core.fuso import FUSO_PADRAO, para_fuso_clinica, validar_fuso
+from app.core.fuso import FUSO_PADRAO, instante_local, para_fuso_clinica, validar_fuso
 
 
 def test_fuso_padrao_e_sao_paulo():
@@ -53,3 +53,21 @@ def test_conversao_rejeita_datetime_sem_fuso():
     naive = datetime(2026, 1, 15, 12, 0)
     with pytest.raises(ValueError):
         para_fuso_clinica(naive, "America/Sao_Paulo")
+
+
+# --- horario de parede da clinica para instante (disponibilidade, tarefa 5.3) ------
+
+
+@pytest.mark.parametrize(
+    "fuso,hora_utc", [("America/Sao_Paulo", 12), ("America/Manaus", 13)]
+)
+def test_instante_local_converte_o_horario_de_parede(fuso, hora_utc):
+    instante = instante_local(date(2027, 3, 1), time(9), fuso)
+    assert instante == datetime(2027, 3, 1, hora_utc, tzinfo=timezone.utc)
+    assert instante.utcoffset() == timedelta(0)
+
+
+def test_instante_local_ida_e_volta():
+    instante = instante_local(date(2027, 3, 1), time(23, 30), "America/Manaus")
+    local = para_fuso_clinica(instante, "America/Manaus")
+    assert (local.date(), local.time()) == (date(2027, 3, 1), time(23, 30))
