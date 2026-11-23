@@ -7,7 +7,7 @@ de conversao, e o nome do fuso e validado antes de gravar.
 tzdata entra no requirements porque o Windows nao traz a base de fusos do sistema,
 e sem ela o zoneinfo nao encontra 'America/Sao_Paulo'.
 """
-from datetime import datetime
+from datetime import date, datetime, time, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 FUSO_PADRAO = "America/Sao_Paulo"
@@ -30,3 +30,14 @@ def para_fuso_clinica(instante: datetime, nome_fuso: str) -> datetime:
     if instante.tzinfo is None or instante.utcoffset() is None:
         raise ValueError("instante precisa ter fuso horario")
     return instante.astimezone(ZoneInfo(nome_fuso))
+
+
+def instante_local(dia: date, hora: time, nome_fuso: str) -> datetime:
+    """Instante UTC do horario de parede dia e hora no fuso da clinica.
+
+    Usada para montar a grade de disponibilidade a partir das faixas de expediente,
+    que sao horarios de parede.
+    """
+    return datetime.combine(dia, hora, tzinfo=ZoneInfo(nome_fuso)).astimezone(
+        timezone.utc
+    )

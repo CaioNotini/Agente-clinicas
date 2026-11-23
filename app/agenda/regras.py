@@ -64,7 +64,16 @@ class HorarioIndisponivel(RegraViolada):
 
 
 class AgendamentoDuplicado(RegraViolada):
-    """O contato ja tem agendamento ativo que se sobrepoe ao intervalo."""
+    """O contato ja tem outro agendamento ativo que se sobrepoe ao intervalo.
+
+    O pedido repetido (mesmo profissional e mesmo inicio) nao e duplicidade: o servico
+    devolve o agendamento existente (ver pedido_repetido).
+    """
+
+
+class ServicoNaoOferecido(RegraViolada):
+    """O profissional nao faz o servico, ou um dos dois esta inativo ou nao existe
+    para a clinica da sessao."""
 
 
 class ConfiguracaoInvalida(Exception):
@@ -204,9 +213,18 @@ def _faixas_validas(faixas: Iterable[FaixaExpediente]) -> list[FaixaExpediente]:
     return ativas
 
 
-def _juntar_faixas(faixas: list[FaixaExpediente], dia: int) -> list[tuple[time, time]]:
-    """Faixas do dia, com as contiguas ou sobrepostas juntas numa so."""
-    trechos = sorted((f.hora_inicio, f.hora_fim) for f in faixas if f.dia_semana == dia)
+def faixas_do_dia(
+    faixas: Iterable[FaixaExpediente], dia_semana: int
+) -> list[tuple[time, time]]:
+    """Trechos de expediente do dia, com as faixas contiguas ou sobrepostas juntas.
+
+    Confere o cadastro de todas as faixas ativas antes (ConfiguracaoInvalida).
+    Usada pela validacao do expediente e pela disponibilidade do provider.
+    """
+    ativas = _faixas_validas(faixas)
+    trechos = sorted(
+        (f.hora_inicio, f.hora_fim) for f in ativas if f.dia_semana == dia_semana
+    )
     juntos: list[tuple[time, time]] = []
     for ini, fim in trechos:
         if juntos and ini <= juntos[-1][1]:
@@ -225,12 +243,13 @@ def validar_expediente(
     e recusado, porque nenhuma faixa (tipo time) passa da meia-noite.
     """
     _exigir_fuso(inicio=inicio, fim=fim)
-    ativas = _faixas_validas(faixas)
+    faixas = list(faixas)
+    _faixas_validas(faixas)
     ini_local = para_fuso_clinica(inicio, fuso)
     fim_local = para_fuso_clinica(fim, fuso)
     if ini_local.date() != fim_local.date():
         raise ForaDoExpediente("o intervalo atravessa a meia-noite")
-    for faixa_ini, faixa_fim in _juntar_faixas(ativas, ini_local.weekday()):
+    for faixa_ini, faixa_fim in faixas_do_dia(faixas, ini_local.weekday()):
         if faixa_ini <= ini_local.time() and fim_local.time() <= faixa_fim:
             return
     raise ForaDoExpediente("fora do expediente do profissional")
@@ -286,19 +305,49 @@ def verificar_duplicidade(
     fim: datetime,
     contato_telefone: str,
     agendamentos: Iterable[Agendamento],
+    profissional_id: Optional[int] = None,
 ) -> None:
     """Recusa se o contato ja tem agendamento ativo sobreposto, com qualquer profissional.
+
+    Com profissional_id, o pedido repetido (mesmo profissional e mesmo inicio) e
+    ignorado, porque o servico devolve o existente em vez de recusar.
 
     Nao ha constraint no banco: a ordem por conversa (ADR 0005) serializa os pedidos
     do mesmo contato que chegam pela fila. Ver a ressalva na secao 7 da arquitetura.
     """
     for existente in _de_um_tenant_so(agendamentos):
+        repetido = (
+            existente.profissional_id == profissional_id and existente.inicio == inicio
+        )
         if (
             existente.status == STATUS_AGENDADO
             and existente.contato_telefone == contato_telefone
+            and not repetido
             and intervalos_conflitam(inicio, fim, existente.inicio, existente.fim)
         ):
             raise AgendamentoDuplicado("o contato ja tem agendamento nesse horario")
+
+
+def pedido_repetido(
+    inicio: datetime,
+    profissional_id: int,
+    contato_telefone: str,
+    agendamentos: Iterable[Agendamento],
+) -> Optional[Agendamento]:
+    """O agendamento ativo do contato com o mesmo profissional e inicio, se houver.
+
+    O pedido repetido devolve o existente, tanto na verificacao previa quanto na
+    corrida que chega como 23P01 (ADR 0004).
+    """
+    for existente in _de_um_tenant_so(agendamentos):
+        if (
+            existente.status == STATUS_AGENDADO
+            and existente.contato_telefone == contato_telefone
+            and existente.profissional_id == profissional_id
+            and existente.inicio == inicio
+        ):
+            return existente
+    return None
 
 
 # --- cancelamento (Q-22) ----------------------------------------------------------

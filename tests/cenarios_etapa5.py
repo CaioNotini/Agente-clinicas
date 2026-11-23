@@ -55,7 +55,8 @@ _TABELAS = (
 
 
 def _inserir(conexao, sql, **params):
-    return conexao.execute(text(sql), params).scalar()
+    resultado = conexao.execute(text(sql), params)
+    return resultado.scalar() if resultado.returns_rows else None
 
 
 def _profissional(conexao, tenant, ativo=True):
