@@ -188,18 +188,20 @@ def _criar_na_sessao(
     if existente is not None:
         return existente
 
-    # Ordem da secao 7 da arquitetura
+    # Ordem da secao 7 da arquitetura. A duplicidade vem antes do conflito para o
+    # contato que pede um horario sobreposto ao dele, mesmo com o mesmo profissional,
+    # receber AgendamentoDuplicado, e nao HorarioIndisponivel.
     validar_antecedencia(agora, inicio, regras)
     validar_expediente(
         inicio, fim, agenda.expediente(session, profissional_id), regras.fuso
+    )
+    verificar_duplicidade(
+        inicio, fim, contato, do_contato, profissional_id=profissional_id
     )
     do_profissional = agenda.listar_ativos(
         session, inicio, fim, profissional_id=profissional_id
     )
     verificar_conflito(inicio, fim, profissional_id, do_profissional)
-    verificar_duplicidade(
-        inicio, fim, contato, do_contato, profissional_id=profissional_id
-    )
 
     novo = _inserir_com_savepoint(
         session,

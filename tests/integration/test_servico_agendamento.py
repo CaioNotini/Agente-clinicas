@@ -124,10 +124,11 @@ def test_outro_horario_sobreposto_do_mesmo_contato_e_duplicado(cenarios):
         _criar(
             cenarios["equipe"], CONTATO, T_EQUIPE + timedelta(minutes=15), prof="prof2"
         )
-    # Com o mesmo profissional, o conflito vem antes da duplicidade na ordem aprovada
-    # (secao 7 da arquitetura), entao a resposta e HorarioIndisponivel
-    with pytest.raises(HorarioIndisponivel):
+    # Com o mesmo profissional tambem: a duplicidade vem antes do conflito na ordem
+    # da secao 7 da arquitetura, entao o contato nao recebe HorarioIndisponivel
+    with pytest.raises(AgendamentoDuplicado):
         _criar(cenarios["equipe"], CONTATO, T_EQUIPE + timedelta(minutes=15))
+    assert len(agendamentos(cenarios["equipe"]["tenant"])) == 1
 
 
 def test_mesmo_profissional_ocupado_por_outro_contato_e_indisponivel(cenarios):
