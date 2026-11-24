@@ -18,7 +18,11 @@ from sqlalchemy.exc import IntegrityError
 from app.agenda import servico
 from app.agenda.agenda_propria import AgendaPropria
 from app.agenda.base import AgendamentoNaoEncontrado
-from app.agenda.regras import ServicoNaoOferecido
+from app.agenda.regras import (
+    ABRIR_HANDOFF,
+    ServicoNaoOferecido,
+    classificar_cancelamento,
+)
 from app.core.conversas import conversa_travada
 from app.handoff.abertura import MOTIVO_CONFIGURACAO_INVALIDA, abrir_handoff
 from tests.cenarios_etapa5 import (
@@ -248,9 +252,25 @@ def test_handoff_nao_referencia_agendamento_ou_mensagem_de_outra_clinica(
 def test_cancelar_id_de_outra_clinica_nao_abre_handoff(cenarios):
     """Fora da janela na equipe, mas o agendamento e do solo: nao e encontrado, e
     nenhum handoff referencia o agendamento alheio."""
-    alheio = _criar(cenarios["solo"])
+    # Terca 02/03 14:00 UTC, 10:00 em Manaus: 26 h depois de AGORA, dentro da
+    # antecedencia e do expediente do solo, e fora da janela da equipe
+    inicio = datetime(2027, 3, 2, 14, tzinfo=UTC)
+    with conversa_travada(cenarios["equipe"]["tenant"], CONTATO) as travada:
+        janela, politica = travada.session.execute(
+            text(
+                "SELECT janela_cancelamento_horas, politica_cancelamento_fora_janela "
+                "FROM regras_agendamento"
+            )
+        ).one()
+    # Controle: com as regras da propria equipe, este pedido abriria handoff. Se o
+    # cenario mudar e o horario voltar para dentro da janela, o teste falha aqui.
+    assert classificar_cancelamento(AGORA, inicio, janela, politica) == ABRIR_HANDOFF
+
+    alheio = _criar(cenarios["solo"], inicio=inicio)
     with pytest.raises(AgendamentoNaoEncontrado):
         with conversa_travada(cenarios["equipe"]["tenant"], CONTATO) as travada:
             servico.cancelar(travada, alheio.id, agora=AGORA)
+    linha = agendamentos(cenarios["solo"]["tenant"], id=alheio.id)[0]
+    assert (linha.status, linha.inicio) == ("agendado", inicio)
     assert handoffs(cenarios["equipe"]["tenant"]) == []
     assert handoffs(cenarios["solo"]["tenant"]) == []

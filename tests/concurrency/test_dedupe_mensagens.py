@@ -10,6 +10,7 @@ import uuid
 
 import pytest
 from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
 
 from app.channels.base import MensagemEntrada
 from app.config import MIGRATION_DATABASE_URL
@@ -129,3 +130,47 @@ def test_mesmo_id_em_outro_tenant_levanta_colisao(dois_tenants):
 
     # B nao gravou mensagem nem criou job
     assert _contar(tenant_b) == (0, 0)
+
+
+def test_sem_rls_o_filtro_de_tenant_separa_colisao_de_duplicata(
+    dois_tenants, monkeypatch
+):
+    """Segunda barreira da fila (ADR 0002): o filtro explicito de tenant_id sozinho.
+
+    Por que a conta de administracao: com o RLS ativo, a policy ja esconde a linha de
+    outra clinica e o filtro nao muda o resultado, entao so uma conexao sem RLS mostra
+    se o filtro existe. O superusuario ignora o RLS mesmo com FORCE. O teste troca a
+    sessao de gravar_e_enfileirar por uma de administracao, e a propria funcao define
+    app.tenant_id nessa sessao antes de consultar.
+
+    Este teste verifica o filtro, nao o RLS. Ele nao substitui os testes de isolamento
+    feitos com app_clinicas (regra 19 do CLAUDE.md), como
+    test_mesmo_id_em_outro_tenant_levanta_colisao acima.
+    """
+    tenant_a, tenant_b = dois_tenants
+    monkeypatch.setattr("app.jobs.queue.SessionLocal", sessionmaker(bind=engine_admin))
+
+    id_compartilhado = _id_unico("colisao-sem-rls")
+    de_a = MensagemEntrada(
+        id=id_compartilhado,
+        tenant_id=tenant_a,
+        contato_telefone=TELEFONE,
+        conteudo="de A",
+    )
+    assert gravar_e_enfileirar(de_a).duplicada is False
+
+    # Sem RLS, so o filtro impede que a linha de A pareca duplicata de B
+    de_b = MensagemEntrada(
+        id=id_compartilhado,
+        tenant_id=tenant_b,
+        contato_telefone=TELEFONE,
+        conteudo="de B",
+    )
+    with pytest.raises(ColisaoIdEntreTenants):
+        gravar_e_enfileirar(de_b)
+    assert _contar(tenant_b) == (0, 0)
+
+    # Controle positivo: o reenvio pela propria clinica continua sendo duplicata
+    reenvio = gravar_e_enfileirar(de_a)
+    assert reenvio.duplicada is True and reenvio.job_id is None
+    assert _contar(tenant_a) == (1, 1)

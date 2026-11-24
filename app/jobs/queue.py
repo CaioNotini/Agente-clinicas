@@ -106,9 +106,14 @@ def gravar_e_enfileirar(mensagem: MensagemEntrada) -> ResultadoEnfileiramento:
         ).first()
 
         if inserida is None:
-            # Nao inseriu. Sob o RLS, so enxergamos a linha se ela for deste tenant.
+            # Nao inseriu. So enxergamos a linha se ela for deste tenant: a policy
+            # restringe, e o filtro explicito e a segunda barreira (ADR 0002). Sem o
+            # filtro, numa conexao sem RLS a colisao viraria duplicata e sumiria.
             visivel = session.execute(
-                text("SELECT 1 FROM mensagens WHERE id = :id"),
+                text(
+                    "SELECT 1 FROM mensagens WHERE id = :id "
+                    "AND tenant_id = current_setting('app.tenant_id')::uuid"
+                ),
                 {"id": mensagem.id},
             ).first()
             if visivel is None:
