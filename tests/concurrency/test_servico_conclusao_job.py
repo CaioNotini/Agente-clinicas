@@ -15,7 +15,14 @@ from app.channels.base import MensagemEntrada
 from app.core.conversas import conversa_travada
 from app.jobs import worker
 from app.jobs.queue import concluir_job, gravar_e_enfileirar
-from tests.cenarios_etapa5 import AGORA, agendamentos, engine_admin, limpar, semear
+from tests.cenarios_etapa5 import (
+    AGORA,
+    agendamentos,
+    engine_admin,
+    handoffs,
+    limpar,
+    semear,
+)
 
 UTC = timezone.utc
 CONTATO = "(00) 90000-0901"
@@ -130,7 +137,7 @@ def test_remarcacao_de_worker_que_perdeu_o_job_mantem_o_antigo(equipe):
             servico_id=equipe["serv"],
             inicio=INICIO,
             agora=AGORA,
-        )
+        ).agendamento
 
     def remarcacao(travada):
         servico.remarcar(
@@ -147,3 +154,53 @@ def test_remarcacao_de_worker_que_perdeu_o_job_mantem_o_antigo(equipe):
 
     linhas = agendamentos(equipe["tenant"])
     assert [(linha.id, linha.status) for linha in linhas] == [(antigo.id, "agendado")]
+
+
+# --- handoff da 5.4 com a conclusao do job ---------------------------------------
+
+
+def _cancelamento_fora_da_janela(antigo_id):
+    def operacao(travada):
+        # 10 h antes do inicio, fora da janela de 48 h da equipe (politica handoff)
+        servico.cancelar(travada, antigo_id, agora=INICIO - timedelta(hours=10))
+
+    return operacao
+
+
+def _agendamento(equipe):
+    with conversa_travada(equipe["tenant"], CONTATO) as travada:
+        return servico.criar(
+            travada,
+            profissional_id=equipe["prof"],
+            servico_id=equipe["serv"],
+            inicio=INICIO,
+            agora=AGORA,
+        ).agendamento
+
+
+def test_handoff_e_confirmado_junto_com_o_job(equipe):
+    antigo = _agendamento(equipe)
+    job_id = _enfileirar(equipe["tenant"])
+    worker.processar_um(
+        "worker-a",
+        processamento=_processamento(equipe, _cancelamento_fora_da_janela(antigo.id)),
+    )
+
+    assert [linha.agendamento_id for linha in handoffs(equipe["tenant"])] == [antigo.id]
+    assert tuple(_job(job_id)) == ("done", "worker-a")
+
+
+def test_worker_que_perdeu_o_job_desfaz_o_handoff(equipe):
+    antigo = _agendamento(equipe)
+    job_id = _enfileirar(equipe["tenant"])
+    worker.processar_um(
+        "worker-a",
+        processamento=_processamento(
+            equipe,
+            _cancelamento_fora_da_janela(antigo.id),
+            antes_de_concluir=_outro_worker_assume,
+        ),
+    )
+
+    assert handoffs(equipe["tenant"]) == []
+    assert tuple(_job(job_id)) == ("processing", "worker-outro")

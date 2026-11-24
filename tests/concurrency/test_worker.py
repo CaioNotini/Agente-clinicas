@@ -10,7 +10,9 @@ import uuid
 import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import OperationalError
+from structlog.testing import capture_logs
 
+from app.agenda.regras import ConfiguracaoInvalida, MisturaDeTenants
 from app.config import MIGRATION_DATABASE_URL
 from app.jobs.worker import (
     engine_worker,
@@ -311,3 +313,59 @@ def test_last_error_de_outro_erro_guarda_tipo_e_mensagem_curta(tenant):
     processar_um(WID, processamento=falha_simples)
 
     assert _estado(job_id).last_error == "ValueError: motivo curto"
+
+
+# --- 5.4: erro permanente nao gasta as tentativas do job ---
+
+
+def _inserir_mensagem_da_conversa(tenant_id, contato):
+    with engine_admin.begin() as conexao:
+        return conexao.execute(
+            text(
+                "INSERT INTO jobs (tenant_id, type, status, contato_telefone, attempts, "
+                "max_attempts, run_at) VALUES (:t, 'PROCESS_INBOUND_MESSAGE', 'pending', "
+                ":tel, 0, 3, now()) RETURNING id"
+            ),
+            {"t": tenant_id, "tel": contato},
+        ).scalar()
+
+
+@pytest.mark.parametrize("erro", [ConfiguracaoInvalida, MisturaDeTenants])
+def test_erro_permanente_vai_para_dead_na_primeira_captura(tenant, erro):
+    contato = "(00) 90000-9901"
+    job_id = _inserir_mensagem_da_conversa(tenant, contato)
+    seguinte = _inserir_mensagem_da_conversa(tenant, contato)
+
+    def falha(conexao, job):
+        raise erro("cadastro quebrado (00) 90000-9901")
+
+    with capture_logs() as logs:
+        assert processar_um(WID, processamento=falha).id == job_id
+
+    estado = _estado(job_id)
+    assert (estado.status, estado.attempts) == ("dead", 1)
+    assert estado.last_error.startswith(erro.__name__)
+
+    erros = [log for log in logs if log["log_level"] == "error"]
+    assert len(erros) == 1
+    assert (erros[0]["tenant_id"], erros[0]["job_id"], erros[0]["erro"]) == (
+        tenant,
+        job_id,
+        erro.__name__,
+    )
+    assert contato not in repr(erros[0])
+
+    # A mensagem seguinte da conversa fica livre na hora (ADR 0005)
+    assert reivindicar_job(WID).id == seguinte
+
+
+def test_controle_erro_comum_continua_voltando_a_pending(tenant):
+    job_id = _inserir_job(tenant)
+
+    def falha(conexao, job):
+        raise RuntimeError("transitorio")
+
+    with capture_logs() as logs:
+        processar_um(WID, processamento=falha)
+    assert (_estado(job_id).status, _estado(job_id).attempts) == ("pending", 1)
+    assert [log for log in logs if log["log_level"] == "error"] == []

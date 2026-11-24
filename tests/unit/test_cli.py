@@ -42,4 +42,6 @@ def test_colisao_de_id_avisa_e_continua_com_a_proxima_mensagem(monkeypatch, caps
     saida = capsys.readouterr().out
     assert chamadas == ["primeira", "segunda"]
     assert "nao gravada" in saida
+    # O texto da excecao nao vai ao contato
+    assert "outro tenant" not in saida
     assert "recebido e enfileirado: job 7" in saida

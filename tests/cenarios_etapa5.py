@@ -42,8 +42,8 @@ EXPEDIENTE_CONTIGUO = [(3, time(8), time(12)), (3, time(12), time(14))]
 
 # Ordem de remocao respeita as FKs
 _TABELAS = (
-    "agendamentos",
     "handoffs",
+    "agendamentos",
     "jobs",
     "mensagens",
     "conversas",
@@ -188,4 +188,57 @@ def agendamentos(tenant, **filtros):
                 "ORDER BY id"
             ),
             {"t": tenant, **filtros},
+        ).all()
+
+
+def configurar_handoff(tenant, *, plantao=None, texto=None, prazo=None):
+    """Configuracao de handoff da clinica (ADR 0009), gravada pela administracao."""
+    with engine_admin.begin() as conexao:
+        conexao.execute(
+            text(
+                "UPDATE clinicas SET telefone_plantao = :p, handoff_texto_paciente = :x, "
+                "handoff_prazo_resposta_minutos = :m WHERE tenant_id = :t"
+            ),
+            {"t": tenant, "p": plantao, "x": texto, "m": prazo},
+        )
+
+
+def mensagem(tenant, contato):
+    """Grava uma mensagem de entrada e devolve o id, para referencia em handoffs."""
+    mensagem_id = uuid.uuid4().hex
+    with engine_admin.begin() as conexao:
+        conexao.execute(
+            text(
+                "INSERT INTO mensagens (id, tenant_id, contato_telefone, conteudo, direcao) "
+                "VALUES (:id, :t, :tel, 'quero cancelar', 'entrada')"
+            ),
+            {"id": mensagem_id, "t": tenant, "tel": contato},
+        )
+    return mensagem_id
+
+
+def agendamento_direto(tenant, prof, serv, contato, inicio, fim):
+    """Agendamento gravado pela administracao, para clinicas em que o servico nao
+    consegue criar (cadastro incompleto)."""
+    with engine_admin.begin() as conexao:
+        return conexao.execute(
+            text(
+                "INSERT INTO agendamentos (tenant_id, profissional_id, servico_id, "
+                "contato_telefone, inicio, fim, status) "
+                "VALUES (:t, :p, :s, :tel, :i, :f, 'agendado') RETURNING id"
+            ),
+            {"t": tenant, "p": prof, "s": serv, "tel": contato, "i": inicio, "f": fim},
+        ).scalar()
+
+
+def handoffs(tenant):
+    """Handoffs da clinica, lidos pela administracao para as assercoes."""
+    with engine_admin.connect() as conexao:
+        return conexao.execute(
+            text(
+                "SELECT h.*, c.contato_telefone FROM handoffs h "
+                "JOIN conversas c ON c.tenant_id = h.tenant_id AND c.id = h.conversa_id "
+                "WHERE h.tenant_id = :t ORDER BY h.id"
+            ),
+            {"t": tenant},
         ).all()
