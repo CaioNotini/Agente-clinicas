@@ -28,7 +28,7 @@ Estado verificado em 2026-11-24. O histórico detalhado de cada mudança fica no
 
 Última verificação em 2026-11-24, no banco do Docker local:
 
-- `pytest tests/ -q`: `448 passed`, no `.venv` e num ambiente limpo instalado do zero pelo `requirements-dev.txt`, depois da limpeza de dependências da rodada 4.
+- `pytest tests/ -q`: `448 passed`, no `.venv` e num ambiente limpo instalado do zero pelo `requirements-dev.txt`, depois da limpeza de dependências da rodada 4. Repetido com o SDK `anthropic` 2.14.0 e o FastAPI 0.108.0, no `.venv` e num ambiente limpo: `448 passed`, sem teste com o marcador `llm_real`.
 - O banco local estava em `45ba5d9bc62d` e foi levado ao head `c3d8e5a1f297` com `alembic upgrade head`. O `alembic check` passou.
 - Ciclo de migrations (`upgrade head`, `downgrade base`, `upgrade head`) e [`scripts/verificar_pks.sql`](../scripts/verificar_pks.sql): última execução na CI do commit `99cc552`. Os commits da rodada 4 aguardam a CI.
 - Setup do zero só pelo [`README.md`](../README.md), num clone limpo, passou em 2026-11-20. A repetição fica com o desenvolvedor, na máquina local dele, e não é pendência do agente.
@@ -51,6 +51,7 @@ O que o código garante hoje, com a decisão de cada ponto:
 
 **Decisões recentes**
 
+- 2026-11-24, passo 0 da etapa 6: SDK `anthropic==2.14.0`, na versão `2026-10-21` da API, com `max_retries=0`. O FastAPI passou para 0.108.0, pelo `anyio>=4.1` que o SDK exige. O modelo vem de `LLM_MODEL`, validada só na criação do cliente, e a chamada real tem o marcador `llm_real`, fora da CI. Contrato do `LLMClient` e hierarquia de erros no [ADR 0010](./decisions/0010-llmclient.md).
 - 2026-11-24, item C7 da [rodada 4](./diagnosticos/2026-11-24-rodada4.md): na remarcação, um novo início que coincide com outro agendamento ativo do mesmo contato levanta `AgendamentoDuplicado`, e o antigo continua ativo. A criação comum continua devolvendo o existente no pedido repetido. Registro na seção 7 da [arquitetura](./arquitetura.md).
 - 2026-11-24, tarefa 5.4: `notificado_para` e `notificado_canal` gravam o destino previsto, e `notificado_em` confirma o envio. `handoffs` ganha `texto_paciente`, `responder_ate`, `agendamento_id` e `mensagem_id`, com FKs compostas e `ON DELETE SET NULL (mensagem_id)` para a exclusão do titular. `ConfiguracaoInvalida` vira handoff `configuracao_invalida`. Registro na revisão do [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md). A conduta depois de mensagem morta não se aplica à 5.4, porque ela não muda o estado da conversa, e o prazo continua na etapa 9.
 - 2026-11-23, tarefa 5.3: a ordem das regras passa a ser antecedência, expediente, duplicidade e conflito. O contato que pede um horário sobreposto ao que ele já tem recebe `AgendamentoDuplicado`, mesmo com o mesmo profissional. Registro na seção 7 da [arquitetura](./arquitetura.md).
@@ -75,6 +76,7 @@ O que o código garante hoje, com a decisão de cada ponto:
 - 7: alinhar a descrição de `log_auditoria` na seção 7 da [arquitetura](./arquitetura.md) com as colunas `acao`, `descricao` e `dados` quando a auditoria for implementada. A ambiguidade continua listada abaixo até lá.
 - 9: decidir a conduta para a conversa depois de uma mensagem morta. Risco aceito até lá ([ADR 0005](./decisions/0005-ordem-por-conversa.md)).
 - 9: a disponibilidade oferece horários em que o próprio contato já tem consulta com outro profissional, e a criação os recusa depois com `AgendamentoDuplicado`. Decidir junto com a ferramenta `verificar_disponibilidade` (C8 da rodada 4).
+- 10: persistir tokens, latência e modelo de cada chamada ao LLM numa tabela, com policy, `TABELAS_TENANT` e testes de isolamento. Na etapa 6 eles vão só ao log estruturado ([ADR 0010](./decisions/0010-llmclient.md)).
 - 12: índices das colunas filhas das FKs, índice parcial da fila e retenção de jobs (C1 e C5).
 - 12: teste de UPDATE que move uma linha própria para outra clínica (`SET tenant_id`), recusado pelo WITH CHECK da policy (C9 da rodada 4).
 - 6: destino de `conversas.historico` (C6).
