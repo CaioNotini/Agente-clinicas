@@ -30,7 +30,7 @@ Estado verificado em 2026-11-24. O histórico detalhado de cada mudança fica no
 
 - `pytest tests/ -q`: `442 passed`.
 - Ciclo de migrations (`upgrade head`, `downgrade base`, `upgrade head`), `alembic check` e [`scripts/verificar_pks.sql`](../scripts/verificar_pks.sql) passaram. Head: `c3d8e5a1f297`.
-- Setup do zero só pelo [`README.md`](../README.md), num clone limpo: ver o resultado de 2026-11-24 abaixo.
+- Setup do zero só pelo [`README.md`](../README.md), num clone limpo, passou em 2026-11-20. A repetição de 2026-11-24 parou no passo 4. O hook `block_env` barra a cópia do arquivo de exemplo, e em seguida o Docker Desktop parou de responder. Pendente.
 - pylint, black e isort passam e reprovam a CI quando falham.
 - Prova por mutação dos testes de isolamento do serviço (`tests/isolation/test_servico_isolamento.py`): rodando sem RLS e sem o filtro explícito de tenant, os 7 testes que provam isolamento falham. A mutação foi rodada à mão e não faz parte da suíte. A segunda barreira (filtro explícito) não tem teste próprio, porque com o RLS ativo ela não muda o resultado.
 - Prova por mutação da 5.4, também à mão: sem RLS e sem o filtro da abertura, os 2 testes de isolamento do handoff falham. Sem o tratamento de `ErroPermanente`, os testes do worker falham. Com a FK de `mensagem_id` sem a lista de colunas no `SET NULL`, a exclusão da mensagem falha por NOT NULL em `tenant_id`.
