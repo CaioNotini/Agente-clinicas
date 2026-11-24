@@ -191,7 +191,7 @@ Um banco, `tenant_id` em toda tabela. Nomes idênticos entre estudo e MVP.
 | `mensagens`                                                               | 2                    | `mensagens.id` como chave primária                                                             |
 | `jobs`                                                                    | 2 (schema) e 3 (uso) | `type`, `payload`, `contato_telefone`, `status`, `run_at`, `attempts`, `locked_at`, `locked_by`, `last_error`. Ordem por conversa no [ADR 0005](./decisions/0005-ordem-por-conversa.md) |
 | `agendamentos`                                                            | 5                    | `profissional_id`, `servico_id`, `contato_telefone`, `inicio`, `fim`, `status`, `cancelado_fora_da_janela` (marca de cancelamento tardio, Q-22) |
-| `handoffs`                                                                | 2 (schema) e 5 (uso) | Conversa, motivo, notificação enviada (`notificado_em`, `notificado_para`, `notificado_canal`, Q-24), quem assumiu, início e devolução ao bot |
+| `handoffs`                                                                | 2 (schema) e 5 (uso) | Conversa, motivo, destino previsto do aviso (`notificado_para`, `notificado_canal`) e envio confirmado (`notificado_em`, Q-24), texto informado ao paciente (`texto_paciente`), limite de resposta (`responder_ate`), agendamento e mensagem de origem (`agendamento_id`, `mensagem_id`), quem assumiu, início e devolução ao bot ([ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md)) |
 | `conhecimento_clinica`                                                    | 8                    | Chunks com embedding, `categoria` (permitido/bloqueado) e modelo de embedding                  |
 | `log_auditoria`                                                           | 2 (schema) e 7 (uso) | Toda mensagem `clinico_bloqueado` ou `urgencia`, com categoria e texto original                |
 | `lembretes`                                                               | 11                   | `enviar_em`, `status`, resposta do paciente                                                    |
@@ -218,8 +218,9 @@ O armazenamento é sempre em UTC, mas as regras de antecedência, janela de canc
 - **Pedido repetido.** Se o contato pede exatamente o que já tem (mesmo profissional, mesmo início, agendamento ativo), o serviço devolve o agendamento existente, sem erro e sem gravar outro. Vale na verificação prévia e na corrida que chega ao banco como `23P01` ([ADR 0004](./decisions/0004-conflito-de-horario.md)). `AgendamentoDuplicado` fica só para outro horário sobreposto do mesmo contato.
 - **Passo da disponibilidade.** Os inícios oferecidos andam de uma duração em uma duração a partir do início de cada faixa de expediente, com as faixas contíguas juntas. A limitação é que horários quebrados não são oferecidos: com faixa às 08:00 e duração de 45 minutos, os inícios são 08:00, 08:45 e 09:30, e uma brecha que comece às 09:10 depois de um cancelamento fica de fora. Um pedido direto para esse horário continua sendo aceito, porque a criação valida o intervalo pedido, não a grade.
 - **Janela de cancelamento.** Antecedência maior ou igual à janela é cancelamento normal. Fora da janela, vale a política da clínica (Q-22). Cancelar um horário que já passou é recusado (`HorarioNoPassado`).
-- **Configuração nula ou ausente.** Uma coluna nula em `regras_agendamento` desliga a regra correspondente. Já a clínica sem linha em `regras_agendamento`, o profissional sem nenhuma faixa ativa de expediente, uma faixa ativa incompleta ou invertida e um valor negativo são erro de cadastro (`ConfiguracaoInvalida`). Esse erro fica fora da família `RegraViolada`, porque não deve virar resposta de horário indisponível ao paciente, e sim alerta ou handoff.
+- **Configuração nula ou ausente.** Uma coluna nula em `regras_agendamento` desliga a regra correspondente. Já a clínica sem linha em `regras_agendamento`, o profissional sem nenhuma faixa ativa de expediente, uma faixa ativa incompleta ou invertida e um valor negativo são erro de cadastro (`ConfiguracaoInvalida`). Esse erro fica fora da família `RegraViolada`, porque não deve virar resposta de horário indisponível ao paciente. O serviço de agendamento o converte em handoff com motivo `configuracao_invalida`, sem referência ao agendamento pedido, e registra um log estruturado de erro com `tenant_id` e o tipo do erro, sem dados do paciente (tarefa 5.4).
 - **Segunda barreira de isolamento.** As verificações de conflito e duplicidade recusam uma lista de agendamentos com mais de uma clínica (`MisturaDeTenants`), antes de aplicar a regra. A barreira principal é o RLS na carga. Esse erro indica bug, fica fora de `RegraViolada` e de `ConfiguracaoInvalida` e nunca vira resposta ao paciente.
+- **Texto ao paciente.** O que vai ao paciente vem só de mensagens fixas ([`app/mensagens/fixas.py`](../app/mensagens/fixas.py)) ou da configuração da clínica. O texto de uma exceção nunca vai ao paciente, porque pode repetir ids e falar de outra clínica.
 
 A duplicidade não tem constraint no banco. Ela é segura sem constraint porque a ordem por conversa ([ADR 0005](./decisions/0005-ordem-por-conversa.md)) e o lock da conversa serializam todos os pedidos do mesmo contato: um pedido só é verificado depois de o anterior do mesmo contato ter sido confirmado ou desfeito. A ressalva é que essa serialização só vale para o que entra pela fila de mensagens. Entradas futuras que gravem agendamentos por outro caminho, como o painel (etapa 14) ou uma agenda externa atrás do `AgendaProvider` (D-17), não passam por ela e precisam de uma barreira própria quando existirem.
 
@@ -263,6 +264,8 @@ UPDATE estado_conversa; COMMIT; job = done
 ```
 
 As duas travas resolvem problemas diferentes. `SKIP LOCKED` impede que dois workers peguem o mesmo job. `FOR UPDATE` na conversa impede que duas mensagens da mesma conversa sejam processadas ao mesmo tempo.
+
+Um job que falha volta para `pending` até `max_attempts`. A exceção é o erro permanente (`ErroPermanente`, em [`app/core/erros.py`](../app/core/erros.py)), como `ConfiguracaoInvalida` e `MisturaDeTenants`. Uma nova tentativa falharia igual e só atrasaria as mensagens seguintes da conversa. O job vai para `dead` na primeira falha, e o worker registra um log estruturado de erro com `tenant_id`, o id do job e o tipo do erro (tarefa 5.4).
 
 Nas etapas 3 a 5 não há classificação de intenção. A IA entra a partir da etapa 6, por cima do motor de estados que já funciona. A classificação entra na etapa 7, primeiro por regra, como baseline, e depois com LLM. A sequência está em [`etapas.md`](./etapas.md).
 
@@ -332,7 +335,7 @@ Um handoff é aberto quando: a mensagem é `clinico_bloqueado` ou `urgencia`, a 
 O responsável pelo atendimento humano é configurado pela clínica e pode ser uma recepção ou o próprio profissional. O aviso vai para `clinicas.telefone_plantao`, seja de quem for ([ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md)).
 
 ```
-Handoff aberto → grava em handoffs e muda estado_conversa para 'escalada'
+Handoff aberto → grava em handoffs e muda estado_conversa para 'escalada' (na etapa 5 só grava, ver abaixo)
  ↓
 Job NOTIFY_HANDOFF → envia template ao WhatsApp pessoal do responsável de plantão
  (número em clinicas.telefone_plantao. Inclui motivo e link para a conversa no painel)
@@ -351,7 +354,8 @@ Pontos que precisam ficar claros:
 - **A conversa não sai do número oficial.** A conversa do paciente continua no número da Cloud API, e o responsável responde pelo painel. O WhatsApp pessoal serve só para avisar e levar ao painel. Se a intenção for que o responsável converse diretamente pelo WhatsApp pessoal, isso é outro produto, fora do MVP (Q-18).
 - **Janela de 24 horas.** Se o responsável responder depois de 24 horas da última mensagem do paciente, a resposta só é aceita com template aprovado pela Meta. O painel precisa avisar isso.
 - **Notificação com template.** O aviso ao WhatsApp pessoal do responsável também é um template aprovado, porque é mensagem iniciada pelo negócio.
-- **Cada tentativa de handoff é registrada** em `handoffs`, incluindo quem foi notificado (`notificado_para` e `notificado_canal`), quando (`notificado_em`), e quem assumiu.
+- **Cada tentativa de handoff é registrada** em `handoffs`, incluindo o destino previsto do aviso (`notificado_para` e `notificado_canal`), quando ele foi de fato enviado (`notificado_em`), e quem assumiu.
+- **Na etapa 5 o handoff só é gravado** ([`app/handoff/abertura.py`](../app/handoff/abertura.py)). O estado da conversa e o `human_mode` não mudam, e o aviso ao responsável não é enviado. `notificado_em` fica nulo até a etapa 13. Os motivos gravados nesta etapa são `cancelamento_fora_da_janela` e `configuracao_invalida`. Detalhes no [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md).
 
 ## 9. Ambientes, deploy e testes
 
