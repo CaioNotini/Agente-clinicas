@@ -16,6 +16,9 @@ from typing import Optional
 from app.channels.base import Channel, MensagemEntrada
 from app.jobs.queue import ColisaoIdEntreTenants, gravar_e_enfileirar
 
+# Resposta fixa quando a mensagem nao pode ser gravada
+MENSAGEM_NAO_GRAVADA = "mensagem nao gravada, envie de novo"
+
 
 class CliChannel(Channel):
     """Canal ligado a um fluxo de entrada e um de saida (por padrao, o terminal).
@@ -72,9 +75,10 @@ def main(argv=None) -> None:
             break
         try:
             resultado = gravar_e_enfileirar(mensagem)
-        except ColisaoIdEntreTenants as erro:
-            # Avisa e segue com a proxima linha, em vez de encerrar o canal
-            canal.send_text(mensagem.contato_telefone, f"mensagem nao gravada: {erro}")
+        except ColisaoIdEntreTenants:
+            # Avisa e segue com a proxima linha, em vez de encerrar o canal. O texto
+            # da excecao nao vai ao contato: ele fala de outra clinica.
+            canal.send_text(mensagem.contato_telefone, MENSAGEM_NAO_GRAVADA)
             continue
         if resultado.duplicada:
             canal.send_text(

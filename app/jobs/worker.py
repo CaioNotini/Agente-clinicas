@@ -24,6 +24,10 @@ conversa (tenant_id, contato_telefone). Jobs sem conversa ficam fora da regra.
 
 Pendencia da etapa 6: nao ha backoff. No retry, run_at fica inalterado, entao o
 job volta a ficar elegivel imediatamente.
+
+Erro permanente (app/core/erros.py, tarefa 5.4): o job vai para dead na primeira
+falha, sem gastar as outras tentativas, e gera log de erro com tenant_id, job_id e
+o tipo do erro. Outra tentativa falharia igual e so atrasaria a conversa.
 """
 import logging
 import time
@@ -31,10 +35,12 @@ import uuid
 from dataclasses import dataclass
 from typing import Callable, Optional
 
+import structlog
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import WORKER_DATABASE_URL
+from app.core.erros import ErroPermanente
 from app.core.processamento import processar_mensagem
 from app.db.database import CONNECT_TIMEOUT_SEGUNDOS
 from app.jobs.queue import JobPerdido
@@ -56,6 +62,8 @@ TIPOS_SUPORTADOS = ("PROCESS_INBOUND_MESSAGE",)
 INTERVALO_ERRO_SEGUNDOS = 5.0
 
 logger = logging.getLogger(__name__)
+# Log estruturado do erro permanente: e problema nosso, e alguem precisa ser avisado
+log_estruturado = structlog.get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -212,6 +220,16 @@ def processar_um(
     except JobPerdido:
         # Outro worker e o dono do job agora. A transacao do processamento ja foi
         # desfeita, e o job nao e tocado aqui (ADR 0008).
+        return job
+    except ErroPermanente as erro:
+        # Sem nova tentativa. So o tipo vai ao log: o texto pode repetir ids.
+        log_estruturado.error(
+            "job_erro_permanente",
+            tenant_id=job.tenant_id,
+            job_id=job.id,
+            erro=type(erro).__name__,
+        )
+        finalizar_job(job, worker_id, "dead", _resumo_erro(erro), engine)
         return job
     except Exception as erro:  # noqa: BLE001 - qualquer falha de processamento
         # Falha: volta a pending ate o teto; atingido max_attempts, vai para dead

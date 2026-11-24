@@ -229,3 +229,17 @@ def test_excluir_agendamento_referenciado_por_handoff_e_recusado(clinicas):
             assert erro.value.orig.pgcode == "23503"
         finally:
             transacao.rollback()
+
+
+def test_fk_da_mensagem_zera_so_a_coluna_da_mensagem():
+    """Catalogo: o SET NULL tem a lista de colunas. Uma migration que recrie a FK sem
+    ela zeraria tambem tenant_id, e o teste de catalogo das FKs nao perceberia."""
+    with engine_app.connect() as conexao:
+        definicao = conexao.execute(
+            text(
+                "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+                "WHERE conname = 'fk_handoffs_mensagem_id_tenant'"
+            )
+        ).scalar()
+    assert definicao is not None
+    assert definicao.endswith("ON DELETE SET NULL (mensagem_id)")

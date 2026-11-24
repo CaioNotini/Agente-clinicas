@@ -114,6 +114,9 @@ def test_cancelar_ou_remarcar_id_de_outra_clinica_nao_encontra(cenarios):
             )
     linha = agendamentos(cenarios["solo"]["tenant"], id=alheio.id)[0]
     assert (linha.status, linha.inicio) == ("agendado", INICIO)
+    # Nenhum handoff referencia o agendamento alheio, nem no cancelar nem no remarcar
+    assert handoffs(cenarios["equipe"]["tenant"]) == []
+    assert handoffs(cenarios["solo"]["tenant"]) == []
 
 
 @pytest.mark.parametrize("trocar", [("prof",), ("serv",), ("prof", "serv")])
