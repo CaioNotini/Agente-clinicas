@@ -539,6 +539,49 @@ def test_remarcar_para_o_mesmo_inicio_nao_muda_nada(cenarios):
     ]
 
 
+def test_remarcar_para_horario_que_o_contato_ja_tem_e_duplicado(cenarios):
+    """Na remarcacao o pedido repetido nao vale (C7 da rodada 4): o antigo nao e
+    cancelado e o agendamento existente nao volta como se fosse o novo."""
+    equipe = cenarios["equipe"]
+    antigo = _criar(equipe, CONTATO, T_EQUIPE_LONGE)
+    outro = _criar(equipe, CONTATO, T_EQUIPE_LONGE + timedelta(hours=4))
+
+    with pytest.raises(AgendamentoDuplicado):
+        _remarcar(equipe, CONTATO, antigo.id, T_EQUIPE_LONGE + timedelta(hours=4))
+
+    linhas = {linha.id: linha.status for linha in agendamentos(equipe["tenant"])}
+    assert linhas == {antigo.id: "agendado", outro.id: "agendado"}
+
+
+def test_remarcar_para_horario_do_contato_com_outro_profissional_e_duplicado(
+    cenarios,
+):
+    equipe = cenarios["equipe"]
+    antigo = _criar(equipe, CONTATO, T_EQUIPE_LONGE)
+    outro = _criar(equipe, CONTATO, T_EQUIPE_LONGE + timedelta(hours=4), prof="prof2")
+
+    with pytest.raises(AgendamentoDuplicado):
+        _remarcar(equipe, CONTATO, antigo.id, T_EQUIPE_LONGE + timedelta(hours=4))
+
+    linhas = {linha.id: linha.status for linha in agendamentos(equipe["tenant"])}
+    assert linhas == {antigo.id: "agendado", outro.id: "agendado"}
+
+
+def test_remarcar_sobreposto_ao_proprio_antigo_continua_valendo(cenarios):
+    """O novo horario pode se sobrepor ao antigo: o cancelamento do antigo ja esta
+    visivel na releitura da agenda, na mesma sessao, e ele nao conta como duplicado."""
+    equipe = cenarios["equipe"]
+    antigo = _criar(equipe, CONTATO, T_EQUIPE_LONGE)
+    resultado = _remarcar(
+        equipe, CONTATO, antigo.id, T_EQUIPE_LONGE + timedelta(minutes=15)
+    )
+
+    assert resultado.situacao == servico.REMARCADO
+    assert resultado.novo.inicio == T_EQUIPE_LONGE + timedelta(minutes=15)
+    linhas = {linha.id: linha.status for linha in agendamentos(equipe["tenant"])}
+    assert linhas == {antigo.id: "cancelado", resultado.novo.id: "agendado"}
+
+
 def test_remarcar_agendamento_de_outro_contato_nao_encontra(cenarios):
     equipe = cenarios["equipe"]
     antigo = _criar(equipe, CONTATO, T_EQUIPE_LONGE)

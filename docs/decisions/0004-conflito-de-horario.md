@@ -39,6 +39,7 @@ Uma constraint no banco não depende da ordem de execução nem de a aplicação
   - `23P01` é conflito de fato. O código relê sob RLS: se o conflitante for do mesmo paciente, profissional e início, devolve o existente (idempotência na corrida). Caso contrário, levanta `HorarioIndisponivel`. A mesma idempotência vale na verificação prévia, antes de gravar: o pedido repetido devolve o existente nos dois caminhos.
   - `40P01` é deadlock, não indisponibilidade. O horário pode estar livre, porque a outra transação ainda pode ser desfeita. A operação é tentada de novo, até 3 vezes no total, e só um `23P01` na nova tentativa vira `HorarioIndisponivel`. Se as 3 derem `40P01`, o erro sobe e o job segue o caminho normal de nova tentativa do worker.
 - Agendamentos cancelados não entram no conflito, porque a constraint é restrita a `status = 'agendado'`. Remarcar marca o antigo como cancelado antes de criar o novo, na mesma transação.
+- Na remarcação, o pedido repetido não vale. A regra fica na seção 7 da [arquitetura](../arquitetura.md#7-modelo-de-dados).
 - A tabela tem RLS, FORCE e policy `isolamento_tenant`, está em `TABELAS_TENANT` e é coberta pelos testes de isolamento, como exige o CLAUDE.md. A escrita cruzada no teste de isolamento usa dados válidos e exige `match="row-level security"`, para a policy ser a única barreira.
 - O fuso por clínica foi decidido no [ADR 0009](./0009-agendamento-handoff-etapa5.md). O armazenamento continua em UTC, e `AgendaPropria.criar` rejeita horários sem fuso.
 

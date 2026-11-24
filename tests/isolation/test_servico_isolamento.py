@@ -75,6 +75,30 @@ def test_mesmo_telefone_em_outra_clinica_nao_gera_duplicado(cenarios):
     assert len(agendamentos(cenarios["solo"]["tenant"], status="agendado")) == 1
 
 
+def test_remarcar_para_horario_do_mesmo_telefone_em_outra_clinica_nao_e_duplicado(
+    cenarios,
+):
+    """Na remarcacao a duplicidade conta qualquer profissional (C7 da rodada 4). O
+    agendamento do mesmo telefone em outra clinica nao pode entrar nessa conta."""
+    alheio = _criar(cenarios["solo"])
+    # 49 h depois de AGORA: dentro da janela de 48 h e do expediente da equipe
+    antigo = _criar(cenarios["equipe"], inicio=INICIO - timedelta(hours=1))
+
+    with conversa_travada(cenarios["equipe"]["tenant"], CONTATO) as travada:
+        resultado = servico.remarcar(
+            travada, antigo.id, novo_inicio=INICIO, agora=AGORA
+        )
+
+    assert resultado.situacao == servico.REMARCADO
+    assert resultado.novo.inicio == INICIO
+    equipe = {
+        linha.id: linha.status for linha in agendamentos(cenarios["equipe"]["tenant"])
+    }
+    assert equipe == {antigo.id: "cancelado", resultado.novo.id: "agendado"}
+    linha = agendamentos(cenarios["solo"]["tenant"], id=alheio.id)[0]
+    assert (linha.status, linha.inicio) == ("agendado", INICIO)
+
+
 def test_carga_de_agendamentos_nao_ve_outra_clinica(cenarios):
     _criar(cenarios["solo"])
     janela = (INICIO - timedelta(hours=1), INICIO + timedelta(hours=2))

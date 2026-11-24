@@ -51,6 +51,7 @@ O que o código garante hoje, com a decisão de cada ponto:
 
 **Decisões recentes**
 
+- 2026-11-24, item C7 da [rodada 4](./diagnosticos/2026-11-24-rodada4.md): na remarcação, um novo início que coincide com outro agendamento ativo do mesmo contato levanta `AgendamentoDuplicado`, e o antigo continua ativo. A criação comum continua devolvendo o existente no pedido repetido. Registro na seção 7 da [arquitetura](./arquitetura.md).
 - 2026-11-24, tarefa 5.4: `notificado_para` e `notificado_canal` gravam o destino previsto, e `notificado_em` confirma o envio. `handoffs` ganha `texto_paciente`, `responder_ate`, `agendamento_id` e `mensagem_id`, com FKs compostas e `ON DELETE SET NULL (mensagem_id)` para a exclusão do titular. `ConfiguracaoInvalida` vira handoff `configuracao_invalida`. Registro na revisão do [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md). A conduta depois de mensagem morta não se aplica à 5.4, porque ela não muda o estado da conversa, e o prazo continua na etapa 9.
 - 2026-11-23, tarefa 5.3: a ordem das regras passa a ser antecedência, expediente, duplicidade e conflito. O contato que pede um horário sobreposto ao que ele já tem recebe `AgendamentoDuplicado`, mesmo com o mesmo profissional. Registro na seção 7 da [arquitetura](./arquitetura.md).
 - 2026-11-23, tarefa 5.3: o pedido repetido (mesmo profissional e início) devolve o agendamento existente, na verificação prévia e no `23P01`. O provider responde a disponibilidade só por expediente e ocupação, e a antecedência é aplicada pelo serviço. O passo da disponibilidade é a duração a partir do início da faixa, sem horários quebrados. Remarcar fora da janela segue a regra de cancelamento do antigo. Registro na seção 7 da [arquitetura](./arquitetura.md) e no [ADR 0004](./decisions/0004-conflito-de-horario.md).
@@ -60,6 +61,8 @@ O que o código garante hoje, com a decisão de cada ponto:
 **Previstas para etapas futuras**
 
 - 13: não abrir handoff novo se já houver um aberto para a mesma conversa, motivo e agendamento. Na 5.4 cada pedido grava uma linha.
+- 13: na remarcação fora da janela, o novo horário não é validado antes de abrir o handoff.
+- 14: com entradas fora da fila, um `23P01` contra agendamento do próprio contato, sobreposto e com outro início, dá `HorarioIndisponivel` em vez de `AgendamentoDuplicado`, tanto na criação quanto na remarcação. Na remarcação o antigo continua ativo, porque o erro sobe pelo SAVEPOINT. Faz parte da ressalva sobre entradas fora da fila na seção 7 da [arquitetura](./arquitetura.md#7-modelo-de-dados).
 - 7: o `mensagem_id` passado ao serviço deve vir do job. A FK garante a mesma clínica, mas não o mesmo contato.
 - LGPD: a exclusão do titular que apague agendamentos precisa tratar antes os handoffs que apontam para eles (FK `NO ACTION`).
 - Outros erros permanentes, como o payload sem `contato_telefone`, ainda consomem as 3 tentativas.

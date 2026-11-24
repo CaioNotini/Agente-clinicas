@@ -12,7 +12,8 @@ O servico nao faz commit. O efeito e a conclusao do job rodam na mesma sessao e 
 confirmados juntos (ADR 0008).
 
 Insercao (ADR 0004): roda num SAVEPOINT. 23P01 relê a agenda e devolve o existente
-no pedido repetido, ou levanta HorarioIndisponivel. 40P01 e deadlock, nao
+no pedido repetido, ou levanta HorarioIndisponivel. Na remarcacao o pedido repetido
+vira AgendamentoDuplicado, na verificacao previa e no 23P01. 40P01 e deadlock, nao
 indisponibilidade: volta ao SAVEPOINT e tenta de novo, ate TENTATIVAS_DEADLOCK. Em
 todos os erros tratados a transacao externa continua utilizavel.
 
@@ -42,6 +43,7 @@ from app.agenda.regras import (
     ABRIR_HANDOFF,
     CANCELAR_TARDIO,
     MOTIVO_CANCELAMENTO_FORA_DA_JANELA,
+    AgendamentoDuplicado,
     ConfiguracaoInvalida,
     HorarioIndisponivel,
     RegrasClinica,
@@ -257,14 +259,19 @@ def _criar_na_sessao(
     servico_id: int,
     inicio: datetime,
     agora: datetime,
+    aceitar_repetido: bool = True,
 ) -> Agendamento:
+    """Valida e grava. aceitar_repetido=False (remarcacao) recusa o pedido repetido
+    com AgendamentoDuplicado, na verificacao previa e no 23P01, em vez de devolver o
+    agendamento existente (secao 7 da arquitetura)."""
     duracao = _duracao(session, profissional_id, servico_id)
     fim = calcular_fim(inicio, duracao)
 
     do_contato = agenda.listar_ativos(session, inicio, fim, contato_telefone=contato)
-    existente = pedido_repetido(inicio, profissional_id, contato, do_contato)
-    if existente is not None:
-        return existente
+    if aceitar_repetido:
+        existente = pedido_repetido(inicio, profissional_id, contato, do_contato)
+        if existente is not None:
+            return existente
 
     # Ordem da secao 7 da arquitetura. A duplicidade vem antes do conflito para o
     # contato que pede um horario sobreposto ao dele, mesmo com o mesmo profissional,
@@ -273,8 +280,14 @@ def _criar_na_sessao(
     validar_expediente(
         inicio, fim, agenda.expediente(session, profissional_id), regras.fuso
     )
+    # Sem profissional_id, o agendamento com o mesmo profissional e inicio tambem
+    # conta como duplicidade
     verificar_duplicidade(
-        inicio, fim, contato, do_contato, profissional_id=profissional_id
+        inicio,
+        fim,
+        contato,
+        do_contato,
+        profissional_id=profissional_id if aceitar_repetido else None,
     )
     do_profissional = agenda.listar_ativos(
         session, inicio, fim, profissional_id=profissional_id
@@ -301,6 +314,8 @@ def _criar_na_sessao(
     )
     existente = pedido_repetido(inicio, profissional_id, contato, ocupados)
     if existente is not None:
+        if not aceitar_repetido:
+            raise AgendamentoDuplicado("o contato ja tem agendamento nesse horario")
         return existente
     raise HorarioIndisponivel("profissional ocupado nesse horario")
 
@@ -405,6 +420,10 @@ def remarcar(
     nada muda e o handoff e gravado com o antigo. Cancelar o antigo e criar o novo
     rodam num SAVEPOINT: se o novo for recusado, o antigo continua agendado e a
     transacao segue utilizavel.
+
+    O pedido repetido nao vale aqui: um novo inicio que coincide com outro
+    agendamento ativo do contato levanta AgendamentoDuplicado, e o antigo continua
+    agendado (secao 7 da arquitetura).
     """
     agenda = agenda or AgendaPropria()
     session = travada.session
@@ -440,6 +459,7 @@ def remarcar(
                 servico_id=antigo.servico_id,
                 inicio=novo_inicio,
                 agora=agora,
+                aceitar_repetido=False,
             )
         except Exception:
             savepoint.rollback()

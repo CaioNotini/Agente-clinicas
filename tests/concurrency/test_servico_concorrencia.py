@@ -16,7 +16,7 @@ import pytest
 from sqlalchemy import text
 
 from app.agenda import servico
-from app.agenda.regras import HorarioIndisponivel
+from app.agenda.regras import AgendamentoDuplicado, HorarioIndisponivel
 from app.core.conversas import ConversaTravada, conversa_travada
 from app.db.database import SessionLocal
 from tests.cenarios_etapa5 import AGORA, agendamentos, engine_admin, limpar, semear
@@ -191,3 +191,68 @@ def test_pedido_repetido_na_corrida_devolve_o_existente(cenarios):
     ativos = agendamentos(equipe["tenant"], status="agendado")
     assert len(ativos) == 1
     assert saida_b["agendamento"].id == ativos[0].id
+
+
+def test_remarcacao_na_corrida_para_horario_do_contato_e_duplicado(cenarios):
+    """Remarcacao que recebe 23P01 contra um agendamento do proprio contato (C7).
+
+    Igual a verificacao previa: AgendamentoDuplicado, e o SAVEPOINT da remarcacao
+    desfaz o cancelamento do antigo. B roda por fora do lock da conversa, como em
+    test_pedido_repetido_na_corrida_devolve_o_existente, para chegar ao 23P01.
+    """
+    equipe = cenarios["equipe"]
+    contato = "(00) 90000-0804"
+    # Sexta 05/03 10:00 em Sao Paulo: 97 h depois de AGORA, dentro da janela de 48 h
+    with conversa_travada(equipe["tenant"], contato) as travada:
+        antigo = _criar(travada, equipe, datetime(2027, 3, 5, 13, tzinfo=UTC))
+
+    pronto, liberar, erros, saida_b = threading.Event(), threading.Event(), [], {}
+    thread_a = threading.Thread(
+        target=_gravacao_a_segura, args=(equipe, contato, pronto, liberar, erros)
+    )
+    thread_a.start()
+    assert pronto.wait(timeout=5)
+
+    def remarcacao_b_sem_lock():
+        session = SessionLocal()
+        try:
+            session.execute(
+                text("SELECT set_config('app.tenant_id', :t, true)"),
+                {"t": equipe["tenant"]},
+            )
+            travada = ConversaTravada(
+                id=0,
+                tenant_id=equipe["tenant"],
+                contato_telefone=contato,
+                estado_conversa="idle",
+                session=session,
+            )
+            try:
+                servico.remarcar(travada, antigo.id, novo_inicio=INICIO, agora=AGORA)
+                saida_b["resultado"] = "remarcado"
+            except AgendamentoDuplicado:
+                saida_b["resultado"] = "duplicado"
+            # A transacao segue utilizavel: o commit confirma o que sobrou dela
+            session.commit()
+        except Exception as erro:  # noqa: BLE001 - repassado para a thread principal
+            session.rollback()
+            saida_b["erro"] = erro
+        finally:
+            session.close()
+
+    thread_b = threading.Thread(target=remarcacao_b_sem_lock)
+    thread_b.start()
+    _esperar_bloqueio()
+    liberar.set()
+    thread_a.join(timeout=10)
+    thread_b.join(timeout=10)
+
+    assert erros == [] and "erro" not in saida_b, (erros, saida_b)
+    assert saida_b["resultado"] == "duplicado"
+    linhas = {linha.id: linha for linha in agendamentos(equipe["tenant"])}
+    assert linhas[antigo.id].status == "agendado"
+    ativos = agendamentos(equipe["tenant"], status="agendado")
+    assert sorted(linha.inicio for linha in ativos) == [
+        INICIO,
+        datetime(2027, 3, 5, 13, tzinfo=UTC),
+    ]
