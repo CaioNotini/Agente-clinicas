@@ -6,15 +6,14 @@ Relaciona-se com: etapas.md, estudo.md, arquitetura.md, principios.md, decisions
 
 # Status do projeto
 
-Estado verificado em 2026-11-23. O histórico detalhado de cada mudança fica no git log e nos [ADRs](./decisions/README.md).
+Estado verificado em 2026-11-24. O histórico detalhado de cada mudança fica no git log e nos [ADRs](./decisions/README.md).
 
 ## Onde estamos
 
-**Etapa ativa: 5, agendamento e handoff determinísticos.** Critérios de pronto em [`etapas.md`](./etapas.md).
+**Etapa ativa: 5, agendamento e handoff determinísticos.** Todas as tarefas feitas. O critério de pronto de [`etapas.md`](./etapas.md) foi conferido em 2026-11-24 e aguarda a validação do desenvolvedor para a etapa ser dada como concluída.
 
-- Feitas: 5.5 (tabela `agendamentos`, conflito pelo [ADR 0004](./decisions/0004-conflito-de-horario.md)), 5.1 (`AgendaProvider` e `AgendaPropria`) 5.2 (regras de antecedência, expediente, conflito, duplicidade e janela de cancelamento em `app/agenda/regras.py`, descritas na seção 7 da [arquitetura](./arquitetura.md) e testadas nos dois cenários) e 5.3 (serviço de agendamento em `app/agenda/servico.py`: criar, remarcar, cancelar e disponibilidade, com SAVEPOINT, `23P01` traduzido, nova tentativa no `40P01`, conclusão atômica do job e testes de isolamento da carga).
+- Feitas: 5.5 (tabela `agendamentos`, conflito pelo [ADR 0004](./decisions/0004-conflito-de-horario.md)), 5.1 (`AgendaProvider` e `AgendaPropria`) 5.2 (regras de antecedência, expediente, conflito, duplicidade e janela de cancelamento em `app/agenda/regras.py`, descritas na seção 7 da [arquitetura](./arquitetura.md) e testadas nos dois cenários) 5.3 (serviço de agendamento em `app/agenda/servico.py`: criar, remarcar, cancelar e disponibilidade, com SAVEPOINT, `23P01` traduzido, nova tentativa no `40P01`, conclusão atômica do job e testes de isolamento da carga) e 5.4 (handoff gravado em `app/handoff/abertura.py`, sem mudar o estado da conversa, pela revisão do [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md)).
 - As decisões do [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md) (Q-21 a Q-24) estão implementadas como blocos reutilizáveis: schema novo, conversão de fuso (`app/core/fuso.py`), regras puras de duração e cancelamento (`app/agenda/regras.py`) e mensagens fixas (`app/mensagens/fixas.py`).
-- Falta: 5.4 (handoff).
 - O serviço ainda não é chamado pelo processamento das mensagens. A ligação com o conteúdo da mensagem entra na etapa 7, com a classificação.
 - A 5.5 e a 5.1 foram feitas antes de a etapa 4 fechar, contra a regra de dependência de [`etapas.md`](./etapas.md). O desvio foi aceito pelo desenvolvedor.
 
@@ -29,11 +28,13 @@ Estado verificado em 2026-11-23. O histórico detalhado de cada mudança fica no
 
 Última verificação em 2026-11-23, no banco do Docker local:
 
-- `pytest tests/ -q`: `398 passed`.
-- Ciclo de migrations (`upgrade head`, `downgrade base`, `upgrade head`), `alembic check` e [`scripts/verificar_pks.sql`](../scripts/verificar_pks.sql) passaram. Head: `45ba5d9bc62d`.
-- Setup do zero só pelo [`README.md`](../README.md), num clone limpo, passou em 2026-11-20. Não repetido em 2026-11-23.
+- `pytest tests/ -q`: `442 passed`.
+- Ciclo de migrations (`upgrade head`, `downgrade base`, `upgrade head`), `alembic check` e [`scripts/verificar_pks.sql`](../scripts/verificar_pks.sql) passaram. Head: `c3d8e5a1f297`.
+- Setup do zero só pelo [`README.md`](../README.md), num clone limpo, passou em 2026-11-20. A repetição de 2026-11-24 parou no passo 4. O hook `block_env` barra a cópia do arquivo de exemplo, e em seguida o Docker Desktop parou de responder. Pendente.
 - pylint, black e isort passam e reprovam a CI quando falham.
 - Prova por mutação dos testes de isolamento do serviço (`tests/isolation/test_servico_isolamento.py`): rodando sem RLS e sem o filtro explícito de tenant, os 7 testes que provam isolamento falham. A mutação foi rodada à mão e não faz parte da suíte. A segunda barreira (filtro explícito) não tem teste próprio, porque com o RLS ativo ela não muda o resultado.
+- Prova por mutação da 5.4, também à mão: sem RLS e sem o filtro da abertura, os 2 testes de isolamento do handoff falham. Sem o tratamento de `ErroPermanente`, os testes do worker falham. Com a FK de `mensagem_id` sem a lista de colunas no `SET NULL`, a exclusão da mensagem falha por NOT NULL em `tenant_id`.
+- Critério de pronto da etapa 5: cada função de `app/agenda/regras.py` tem teste unitário com casos de borda (no limite, 1 segundo abaixo, coluna nula, adjacentes, último dia permitido), e `test_handoff_gravado_aparece_no_banco_com_destino_previsto` lê o handoff gravado pela conta `app_clinicas`.
 
 O que o código garante hoje, com a decisão de cada ponto:
 
@@ -42,16 +43,15 @@ O que o código garante hoje, com a decisão de cada ponto:
 - Mensagens da mesma conversa processadas na ordem de chegada ([ADR 0005](./decisions/0005-ordem-por-conversa.md)) e sem processamento simultâneo (lock por conversa).
 - Efeitos de um job confirmados uma vez só, junto com a conclusão do job ([ADR 0008](./decisions/0008-conclusao-atomica-do-job.md)).
 - Transições de estado pelo grafo do [ADR 0003](./decisions/0003-grafo-de-transicoes.md).
+- Erro permanente (`ConfiguracaoInvalida`, `MisturaDeTenants`) leva o job a `dead` na primeira falha, com log estruturado de erro. O texto de exceções não vai ao paciente (seções 7 e 8.1 da [arquitetura](./arquitetura.md)).
 - Senhas das roles aplicadas por script, sem passo manual ([ADR 0006](./decisions/0006-provisionamento-de-roles.md)).
 
 ## Pendências
 
-**Ação do desenvolvedor**
-
-- Trocar a senha local de `worker_jobs` e rodar `python -m scripts.definir_senhas`. Ela apareceu na saída de um teste que falhou em 2026-11-18. O teste foi removido, e o `connect_timeout` do worker ficou sem teste automático.
 
 **Decisões recentes**
 
+- 2026-11-24, tarefa 5.4: `notificado_para` e `notificado_canal` gravam o destino previsto, e `notificado_em` confirma o envio. `handoffs` ganha `texto_paciente`, `responder_ate`, `agendamento_id` e `mensagem_id`, com FKs compostas e `ON DELETE SET NULL (mensagem_id)` para a exclusão do titular. `ConfiguracaoInvalida` vira handoff `configuracao_invalida`. Registro na revisão do [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md). A conduta depois de mensagem morta não se aplica à 5.4, porque ela não muda o estado da conversa, e o prazo continua na etapa 9.
 - 2026-11-23, tarefa 5.3: a ordem das regras passa a ser antecedência, expediente, duplicidade e conflito. O contato que pede um horário sobreposto ao que ele já tem recebe `AgendamentoDuplicado`, mesmo com o mesmo profissional. Registro na seção 7 da [arquitetura](./arquitetura.md).
 - 2026-11-23, tarefa 5.3: o pedido repetido (mesmo profissional e início) devolve o agendamento existente, na verificação prévia e no `23P01`. O provider responde a disponibilidade só por expediente e ocupação, e a antecedência é aplicada pelo serviço. O passo da disponibilidade é a duração a partir do início da faixa, sem horários quebrados. Remarcar fora da janela segue a regra de cancelamento do antigo. Registro na seção 7 da [arquitetura](./arquitetura.md) e no [ADR 0004](./decisions/0004-conflito-de-horario.md).
 - 2026-11-23, tarefa 5.2: duplicidade é o mesmo contato com agendamento ativo sobreposto, com qualquer profissional, sem constraint, porque a ordem por conversa serializa os pedidos do mesmo contato (com a ressalva para entradas futuras fora da fila). Coluna nula em `regras_agendamento` desliga a regra, e cadastro ausente é `ConfiguracaoInvalida`, fora de `RegraViolada`. A disponibilidade (C3) entra na 5.3. Registro na seção 7 da [arquitetura](./arquitetura.md).
@@ -59,7 +59,10 @@ O que o código garante hoje, com a decisão de cada ponto:
 
 **Previstas para etapas futuras**
 
-- 5.4: gravar o handoff quando o serviço devolve `aguarda_handoff`. Converter `ConfiguracaoInvalida` em handoff ou alerta, não em resposta de horário. Erros que não são transitórios, como `ConfiguracaoInvalida` e `MisturaDeTenants`, não devem consumir as tentativas do job: hoje eles fazem o job ser tentado 3 vezes e ir para `dead`. O texto das exceções repete o id pedido e não deve ir ao paciente.
+- 13: não abrir handoff novo se já houver um aberto para a mesma conversa, motivo e agendamento. Na 5.4 cada pedido grava uma linha.
+- 7: o `mensagem_id` passado ao serviço deve vir do job. A FK garante a mesma clínica, mas não o mesmo contato.
+- LGPD: a exclusão do titular que apague agendamentos precisa tratar antes os handoffs que apontam para eles (FK `NO ACTION`).
+- Outros erros permanentes, como o payload sem `contato_telefone`, ainda consomem as 3 tentativas.
 - `55P03` (lock_timeout de 5 s esperando outra transação na verificação da constraint de conflito) sobe sem tratamento próprio, e o job tenta de novo.
 - 7: reduzir os grants de `app_clinicas`, só com pedido explícito e ADR (item A4 do [plano](./diagnosticos/2026-11-18-plano-rodada3.md)). O UPDATE em `jobs` precisa continuar, pelo ADR 0008. Os grants de `worker_jobs` também são mais amplos que o uso, como registra o ADR 0002.
 - 7: usar `validar_transicao` em toda escrita de estado (C4).
@@ -81,7 +84,7 @@ O que o código garante hoje, com a decisão de cada ponto:
 - [`estudo.md`](./estudo.md): escopo, premissas e orçamento do estudo
 - [`arquitetura.md`](./arquitetura.md): decisões técnicas, modelo de dados e questões em aberto
 - [`principios.md`](./principios.md): princípios e como são verificados
-- [`decisions/README.md`](./decisions/README.md): ADRs 0001 a 0008
+- [`decisions/README.md`](./decisions/README.md): ADRs 0001 a 0009
 - [`fake_clinic/clinica.md`](./fake_clinic/clinica.md), [`fake_clinic/FAQ.md`](./fake_clinic/FAQ.md) e [`fake_clinic/pergs_bloqueadas.md`](./fake_clinic/pergs_bloqueadas.md): base fictícia (clínica com equipe e recepção)
 - [`fake_clinic/consultorio_solo.md`](./fake_clinic/consultorio_solo.md): segundo tenant fictício, consultório de um profissional só, sem recepção, para testar as regras da etapa 5 nos dois cenários
 - [`diagnosticos/2026-11-18-plano-rodada3.md`](./diagnosticos/2026-11-18-plano-rodada3.md): plano de trabalho da rodada 3, com os itens ainda abertos

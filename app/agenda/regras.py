@@ -16,6 +16,7 @@ from datetime import datetime, time, timedelta
 from typing import Iterable, Optional
 
 from app.agenda.base import STATUS_AGENDADO, Agendamento
+from app.core.erros import ErroPermanente
 from app.core.fuso import para_fuso_clinica, validar_fuso
 
 # Politicas de cancelamento fora da janela (coluna regras_agendamento)
@@ -76,11 +77,15 @@ class ServicoNaoOferecido(RegraViolada):
     para a clinica da sessao."""
 
 
-class ConfiguracaoInvalida(Exception):
-    """Cadastro da clinica incompleto ou invalido. Nao e uma RegraViolada."""
+class ConfiguracaoInvalida(ErroPermanente):
+    """Cadastro da clinica incompleto ou invalido. Nao e uma RegraViolada.
+
+    O servico de agendamento a converte em handoff (tarefa 5.4). Se escapar dele, o
+    job vai direto para dead.
+    """
 
 
-class MisturaDeTenants(Exception):
+class MisturaDeTenants(ErroPermanente):
     """A lista de agendamentos recebida tem mais de uma clinica.
 
     Segunda barreira de isolamento: a lista deveria vir de uma sessao app_clinicas,

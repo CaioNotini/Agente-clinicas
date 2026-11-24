@@ -1,7 +1,7 @@
 ```
 Papel: Decisões de produto e schema da etapa 5 para duração, fuso, cancelamento fora da janela e destinatário de handoff, sem presumir recepção.
 Entrada: docs/status.md
-Relaciona-se com: ../arquitetura.md, ../etapas.md, 0004-conflito-de-horario.md, 0007-fks-compostas-por-tenant.md
+Relaciona-se com: ../arquitetura.md, ../etapas.md, 0004-conflito-de-horario.md, 0005-ordem-por-conversa.md, 0007-fks-compostas-por-tenant.md, 0008-conclusao-atomica-do-job.md
 ```
 
 # 0009: Agendamento e handoff da etapa 5 sem presumir recepção
@@ -29,7 +29,7 @@ Consultórios de um profissional só, sem secretária nem recepção, fazem part
 
 **Q-23 fuso.** Fuso por clínica em `clinicas.fuso` (nome IANA, default `America/Sao_Paulo`). As regras de antecedência, janela de cancelamento e lembretes usam o fuso da clínica. O armazenamento de `agendamentos.inicio` e `agendamentos.fim` continua em UTC (timestamptz), como no [ADR 0004](0004-conflito-de-horario.md). A conversão para o fuso da clínica fica numa função única, e o nome do fuso é validado pela aplicação antes de gravar. O pacote `tzdata` entra no `requirements.txt`, porque o Windows não traz a base de fusos do sistema.
 
-**Q-24 quem foi notificado.** `handoffs` ganha `notificado_para` (String) e `notificado_canal` (String, com CHECK dos canais existentes), ao lado do `notificado_em` já existente. O destinatário do aviso continua sendo `clinicas.telefone_plantao`, que pode ser o da recepção ou o do próprio profissional. `notificado_para` registra quem de fato recebeu.
+**Q-24 quem foi notificado.** `handoffs` ganha `notificado_para` (String) e `notificado_canal` (String, com CHECK dos canais existentes), ao lado do `notificado_em` já existente. O destinatário do aviso continua sendo `clinicas.telefone_plantao`, que pode ser o da recepção ou o do próprio profissional. `notificado_para` registra quem de fato recebeu. Revisto em 2026-11-24: as duas colunas passam a ser o destino previsto, e `notificado_em` confirma o envio (ver Revisão).
 
 **Configuração nova por clínica.** Em `clinicas`:
 - `handoff_prazo_resposta_minutos` (Integer, nullable): prazo de resposta esperado. Nulo significa não informar prazo ao paciente.
@@ -52,6 +52,41 @@ Override por profissional é nullable, então a clínica que não precisa nunca 
   - Se surgirem múltiplos destinatários, reenvio ou escalonamento, `notificado_para` e `notificado_canal` em `handoffs` deixam de bastar, e o registro de notificações vira uma tabela própria, com uma linha por tentativa de notificação.
 - A conversão de fuso para exibição ao paciente entra quando houver canal que exiba horário, não nesta etapa.
 
+## Revisão de 2026-11-24 (tarefa 5.4)
+
+### Contexto
+
+A 5.4 grava o handoff, mas o aviso ao responsável só é enviado a partir da etapa 13 ([`etapas.md`](../etapas.md)). Com a leitura anterior de Q-24, preencher `notificado_para` sem enviar nada registraria algo que não aconteceu. A tabela também não guardava o que foi dito ao paciente, o prazo prometido, o agendamento envolvido nem a mensagem que originou o pedido.
+
+### Decisão
+
+- **Destino previsto.** Na abertura, `notificado_para` recebe `clinicas.telefone_plantao` e `notificado_canal` recebe o canal do estudo (`cli`). Sem `telefone_plantao`, as duas ficam nulas. `notificado_em` fica nulo até o envio real, e é ele que confirma que o aviso saiu.
+- **Colunas novas em `handoffs`**, numa migration só (`c3d8e5a1f297`):
+  - `texto_paciente`: cópia do texto que o bot informou ao paciente na abertura, montado pela configuração da clínica ou pelo padrão neutro. Nunca o conteúdo da mensagem do paciente.
+  - `responder_ate` (timestamptz): instante limite, calculado na abertura como o momento do pedido somado a `handoff_prazo_resposta_minutos`. Nulo quando a clínica não informa prazo. Um prazo nulo ou não positivo conta como não informado, para um cadastro ruim do prazo não impedir o handoff.
+  - `agendamento_id`: o agendamento envolvido, quando ele já foi validado como do contato. FK composta para `agendamentos (tenant_id, id)`, com a regra de exclusão das outras FKs (`NO ACTION`).
+  - `mensagem_id`: só a referência da mensagem de origem, nunca o conteúdo. FK composta para `mensagens (tenant_id, id)` com `ON DELETE SET NULL (mensagem_id)`. O pedido de exclusão do titular (LGPD) apaga a mensagem e mantém o handoff, sem a referência. A lista de colunas faz o Postgres 15 zerar só `mensagem_id`. Sem ela, zeraria também `tenant_id`, que é NOT NULL, e a exclusão falharia.
+- **UNIQUE `(tenant_id, id)`** em `agendamentos` e `mensagens`, alvo das FKs compostas, pela regra de tabelas novas do [ADR 0007](./0007-fks-compostas-por-tenant.md).
+- **Motivos gravados na etapa 5.** `cancelamento_fora_da_janela`, com o agendamento, e `configuracao_invalida`, no lugar da `ConfiguracaoInvalida` do serviço. Este não referencia o agendamento pedido, porque o id pode não ser do contato e a falha pode ter vindo antes dessa verificação.
+- **Sem mudança de estado.** O handoff não muda `estado_conversa` nem `human_mode`. Por isso a 5.4 não é a primeira etapa em que o processamento altera o estado da conversa, e a conduta depois de uma mensagem morta continua com prazo na etapa 9 ([ADR 0005](./0005-ordem-por-conversa.md)).
+- **Confirmação junto com o job.** O handoff é gravado na sessão da conversa travada, sem commit próprio, e é confirmado ou desfeito com a conclusão do job ([ADR 0008](./0008-conclusao-atomica-do-job.md)).
+
+### Alternativas consideradas
+
+- Deixar `notificado_para` e `notificado_canal` nulos até a etapa 13. Descartada pelo desenvolvedor: o destino previsto já é útil para quem lê o registro, e `notificado_em` separa o previsto do enviado.
+- Não gravar texto nem prazo e devolver só o texto montado. Descartada: a configuração da clínica pode mudar depois, e o registro perderia o que foi prometido.
+- `mensagem_id` sem FK. Descartada: um handoff de uma clínica poderia apontar para a mensagem de outra sem o banco recusar.
+- `mensagem_id` com `NO ACTION`. Descartada: impediria apagar a mensagem num pedido de exclusão do titular.
+
+### Consequências
+
+- `handoffs` já tem a policy `isolamento_tenant` e está em `TABELAS_TENANT`. Nenhuma policy, role ou grant muda.
+- O teste de catálogo das FKs cobre as duas FKs novas, e [`test_fk_tenant.py`](../../tests/isolation/test_fk_tenant.py) prova a recusa da referência de outra clínica e a exclusão da mensagem.
+- Um agendamento referenciado por handoff não pode ser apagado. Hoje nenhum caminho apaga agendamentos, que só mudam de status. Um pedido de exclusão do titular (LGPD) que precise apagar agendamentos vai ter de tratar antes os handoffs que apontam para eles. A conduta fica para quando esse pedido for implementado.
+- A FK de `mensagem_id` garante a mesma clínica, mas não o mesmo contato. Hoje só código interno passa o id. Quando o processamento passar a chamar o serviço (etapa 7), o `mensagem_id` deve vir do job, e não de um dado da mensagem.
+- `handoff_texto_paciente` continua `varchar(500)`, então o banco recusa um texto maior já na gravação da configuração. `texto_paciente` tem 600 caracteres para caber o texto da clínica com a frase do prazo.
+- Cada pedido grava uma linha, sem deduplicação. A nova tentativa de um job não duplica, pela atomicidade do ADR 0008. Não abrir um handoff novo quando já houver um aberto para a mesma conversa, motivo e agendamento fica para a etapa 13, registrado em [`status.md`](../status.md).
+
 ## Status
 
-Aceita
+Aceita. Revista em 2026-11-24 (tarefa 5.4)

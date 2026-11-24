@@ -12,13 +12,24 @@ confere o banco depois.
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from app.agenda import servico
 from app.agenda.agenda_propria import AgendaPropria
 from app.agenda.base import AgendamentoNaoEncontrado
-from app.agenda.regras import ConfiguracaoInvalida, ServicoNaoOferecido
+from app.agenda.regras import ServicoNaoOferecido
 from app.core.conversas import conversa_travada
-from tests.cenarios_etapa5 import AGORA, agendamentos, limpar, semear
+from app.handoff.abertura import MOTIVO_CONFIGURACAO_INVALIDA, abrir_handoff
+from tests.cenarios_etapa5 import (
+    AGORA,
+    agendamentos,
+    configurar_handoff,
+    handoffs,
+    limpar,
+    mensagem,
+    semear,
+)
 
 UTC = timezone.utc
 CONTATO = "(00) 90000-0601"
@@ -35,7 +46,7 @@ def cenarios():
     limpar(dados)
 
 
-def _criar(cenario, inicio=INICIO, prof=None, serv=None):
+def _resultado_criar(cenario, inicio=INICIO, prof=None, serv=None):
     with conversa_travada(cenario["tenant"], CONTATO) as travada:
         return servico.criar(
             travada,
@@ -44,6 +55,10 @@ def _criar(cenario, inicio=INICIO, prof=None, serv=None):
             inicio=inicio,
             agora=AGORA,
         )
+
+
+def _criar(cenario, **kwargs):
+    return _resultado_criar(cenario, **kwargs).agendamento
 
 
 def test_mesmo_telefone_em_outra_clinica_nao_gera_duplicado(cenarios):
@@ -81,7 +96,7 @@ def test_ocupacao_de_outra_clinica_nao_tira_horario_da_disponibilidade(cenarios)
             dia=date(2027, 3, 3),
             agora=AGORA,
         )
-    assert INICIO in livres
+    assert INICIO in livres.horarios
 
 
 def test_cancelar_ou_remarcar_id_de_outra_clinica_nao_encontra(cenarios):
@@ -99,6 +114,9 @@ def test_cancelar_ou_remarcar_id_de_outra_clinica_nao_encontra(cenarios):
             )
     linha = agendamentos(cenarios["solo"]["tenant"], id=alheio.id)[0]
     assert (linha.status, linha.inicio) == ("agendado", INICIO)
+    # Nenhum handoff referencia o agendamento alheio, nem no cancelar nem no remarcar
+    assert handoffs(cenarios["equipe"]["tenant"]) == []
+    assert handoffs(cenarios["solo"]["tenant"]) == []
 
 
 @pytest.mark.parametrize("trocar", [("prof",), ("serv",), ("prof", "serv")])
@@ -116,17 +134,30 @@ def test_profissional_ou_servico_de_outra_clinica_nao_e_oferecido(cenarios, troc
 
 
 def test_clinica_sem_regras_nao_usa_as_regras_de_outra(cenarios):
-    with pytest.raises(ConfiguracaoInvalida):
-        _criar(cenarios["sem_cadastro"])
-    with pytest.raises(ConfiguracaoInvalida):
-        with conversa_travada(cenarios["sem_cadastro"]["tenant"], CONTATO) as travada:
-            servico.disponibilidade(
-                travada,
-                profissional_id=cenarios["sem_cadastro"]["prof"],
-                servico_id=cenarios["sem_cadastro"]["serv"],
-                dia=date(2027, 3, 3),
-                agora=AGORA,
-            )
+    """Com as regras de outra clinica, o servico criaria e listaria horarios. Sem
+    regras, abre handoff na propria clinica e em nenhuma outra."""
+    sem = cenarios["sem_cadastro"]
+    resultado = _resultado_criar(sem)
+    with conversa_travada(sem["tenant"], CONTATO) as travada:
+        disponivel = servico.disponibilidade(
+            travada,
+            profissional_id=sem["prof"],
+            servico_id=sem["serv"],
+            dia=date(2027, 3, 3),
+            agora=AGORA,
+        )
+    assert (resultado.situacao, resultado.agendamento) == (
+        servico.AGUARDA_HANDOFF,
+        None,
+    )
+    assert (disponivel.situacao, disponivel.horarios) == (servico.AGUARDA_HANDOFF, [])
+    assert agendamentos(sem["tenant"]) == []
+    assert [linha.motivo for linha in handoffs(sem["tenant"])] == [
+        MOTIVO_CONFIGURACAO_INVALIDA,
+        MOTIVO_CONFIGURACAO_INVALIDA,
+    ]
+    assert handoffs(cenarios["equipe"]["tenant"]) == []
+    assert handoffs(cenarios["solo"]["tenant"]) == []
 
 
 def test_disponibilidade_com_profissional_e_servico_de_outra_clinica(cenarios):
@@ -150,3 +181,76 @@ def test_expediente_de_outra_clinica_nao_aparece(cenarios):
         )
     assert alheio == []
     assert proprio  # controle positivo: a leitura funciona para a propria clinica
+
+
+# --- handoffs (tarefa 5.4) --------------------------------------------------------
+
+
+def _handoffs_vistos(tenant):
+    """Handoffs que a sessao app_clinicas da clinica enxerga, sob RLS."""
+    with conversa_travada(tenant, CONTATO) as travada:
+        return travada.session.execute(text("SELECT id FROM handoffs")).scalars().all()
+
+
+def test_handoff_de_uma_clinica_nao_e_visto_pela_outra(cenarios):
+    equipe, solo = cenarios["equipe"], cenarios["solo"]
+    with conversa_travada(equipe["tenant"], CONTATO) as travada:
+        aberto = abrir_handoff(travada, MOTIVO_CONFIGURACAO_INVALIDA, agora=AGORA)
+
+    assert _handoffs_vistos(solo["tenant"]) == []
+    assert _handoffs_vistos(equipe["tenant"]) == [aberto.id]  # controle positivo
+
+
+def test_configuracao_do_handoff_vem_da_propria_clinica(cenarios):
+    """As duas clinicas tem configuracao diferente. Sem o tenant, a leitura poderia
+    pegar o plantao, o texto ou o prazo da outra."""
+    equipe, solo = cenarios["equipe"], cenarios["solo"]
+    configurar_handoff(solo["tenant"], plantao="(00) 3000-0602", texto="Solo.", prazo=60)
+    configurar_handoff(equipe["tenant"], plantao="(00) 3000-0601", texto="Equipe.")
+
+    with conversa_travada(equipe["tenant"], CONTATO) as travada:
+        aberto = abrir_handoff(travada, MOTIVO_CONFIGURACAO_INVALIDA, agora=AGORA)
+
+    linha = handoffs(equipe["tenant"])[0]
+    assert (linha.notificado_para, linha.texto_paciente, linha.responder_ate) == (
+        "(00) 3000-0601",
+        "Equipe.",
+        None,
+    )
+    assert aberto.texto_paciente == "Equipe."
+    assert handoffs(solo["tenant"]) == []
+
+
+@pytest.mark.parametrize("referencia", ["agendamento_id", "mensagem_id"])
+def test_handoff_nao_referencia_agendamento_ou_mensagem_de_outra_clinica(
+    cenarios, referencia
+):
+    """O id existe na outra clinica. A FK composta (ADR 0007) recusa a referencia,
+    mesmo pela abertura de handoff."""
+    equipe, solo = cenarios["equipe"], cenarios["solo"]
+    alheios = {
+        "agendamento_id": _criar(solo).id,
+        "mensagem_id": mensagem(solo["tenant"], CONTATO),
+    }
+    with pytest.raises(IntegrityError) as erro:
+        with conversa_travada(equipe["tenant"], CONTATO) as travada:
+            abrir_handoff(
+                travada,
+                MOTIVO_CONFIGURACAO_INVALIDA,
+                agora=AGORA,
+                **{referencia: alheios[referencia]},
+            )
+    assert erro.value.orig.pgcode == "23503"
+    assert handoffs(equipe["tenant"]) == []
+    assert handoffs(solo["tenant"]) == []
+
+
+def test_cancelar_id_de_outra_clinica_nao_abre_handoff(cenarios):
+    """Fora da janela na equipe, mas o agendamento e do solo: nao e encontrado, e
+    nenhum handoff referencia o agendamento alheio."""
+    alheio = _criar(cenarios["solo"])
+    with pytest.raises(AgendamentoNaoEncontrado):
+        with conversa_travada(cenarios["equipe"]["tenant"], CONTATO) as travada:
+            servico.cancelar(travada, alheio.id, agora=AGORA)
+    assert handoffs(cenarios["equipe"]["tenant"]) == []
+    assert handoffs(cenarios["solo"]["tenant"]) == []

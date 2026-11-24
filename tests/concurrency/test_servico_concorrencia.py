@@ -40,7 +40,7 @@ def _criar(travada, equipe, inicio=INICIO):
         servico_id=equipe["serv"],
         inicio=inicio,
         agora=AGORA,
-    )
+    ).agendamento
 
 
 def _esperar_bloqueio(timeout=5.0):

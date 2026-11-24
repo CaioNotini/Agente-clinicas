@@ -1,4 +1,4 @@
-"""Servico de agendamento da tarefa 5.3: criar, remarcar, cancelar e disponibilidade.
+"""Servico de agendamento: criar, remarcar, cancelar e disponibilidade (5.3 e 5.4).
 
 Aplica as regras de app/agenda/regras.py sobre a configuracao da clinica lida do
 banco e grava pelo AgendaProvider. Cada operacao recebe a ConversaTravada:
@@ -16,13 +16,18 @@ no pedido repetido, ou levanta HorarioIndisponivel. 40P01 e deadlock, nao
 indisponibilidade: volta ao SAVEPOINT e tenta de novo, ate TENTATIVAS_DEADLOCK. Em
 todos os erros tratados a transacao externa continua utilizavel.
 
-ConfiguracaoInvalida e MisturaDeTenants sobem sem tratamento. A conversao de
-ConfiguracaoInvalida em handoff fica para a 5.4.
+Handoff (5.4): o pedido fora da janela com a politica handoff grava o handoff com o
+agendamento do contato. ConfiguracaoInvalida nao sobe: a operacao roda num
+SAVEPOINT, o erro o desfaz, o handoff configuracao_invalida e gravado e a situacao e
+AGUARDA_HANDOFF. O erro e nosso (cadastro), entao gera log de erro, sem dados do
+paciente nem o texto da excecao. RegraViolada, AgendamentoNaoEncontrado e
+MisturaDeTenants continuam subindo, sem handoff.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import Optional
+from typing import Callable, Optional
 
+import structlog
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
@@ -36,6 +41,7 @@ from app.agenda.base import (
 from app.agenda.regras import (
     ABRIR_HANDOFF,
     CANCELAR_TARDIO,
+    MOTIVO_CANCELAMENTO_FORA_DA_JANELA,
     ConfiguracaoInvalida,
     HorarioIndisponivel,
     RegrasClinica,
@@ -51,13 +57,20 @@ from app.agenda.regras import (
     verificar_conflito,
     verificar_duplicidade,
 )
+from app.handoff.abertura import (
+    MOTIVO_CONFIGURACAO_INVALIDA,
+    HandoffAberto,
+    abrir_handoff,
+)
 
 # Tentativas da insercao quando o banco aborta por deadlock (40P01)
 TENTATIVAS_DEADLOCK = 3
 _EXCLUSAO = "23P01"
 _DEADLOCK = "40P01"
 
-# Situacoes devolvidas por cancelar e remarcar
+# Situacoes devolvidas pelas operacoes
+CRIADO = "criado"
+DISPONIVEL = "disponivel"
 CANCELADO = "cancelado"
 CANCELADO_TARDIO = "cancelado_tardio"
 AGUARDA_HANDOFF = "aguarda_handoff"
@@ -67,13 +80,38 @@ INALTERADO = "inalterado"
 # Filtro explicito de tenant, segunda barreira alem da policy (ADR 0002)
 _DO_TENANT = "tenant_id = current_setting('app.tenant_id')::uuid"
 
+logger = structlog.get_logger(__name__)
+
+
+# Em AGUARDA_HANDOFF, handoff traz o que foi gravado e o texto ao paciente. Nada foi
+# alterado na agenda. Por configuracao invalida, os agendamentos ficam None.
+
+
+@dataclass(frozen=True)
+class ResultadoCriacao:
+    """situacao: CRIADO (novo ou pedido repetido) ou AGUARDA_HANDOFF."""
+
+    situacao: str
+    agendamento: Optional[Agendamento]
+    handoff: Optional[HandoffAberto] = None
+
+
+@dataclass(frozen=True)
+class ResultadoDisponibilidade:
+    """situacao: DISPONIVEL ou AGUARDA_HANDOFF (horarios vazio)."""
+
+    situacao: str
+    horarios: list[datetime] = field(default_factory=list)
+    handoff: Optional[HandoffAberto] = None
+
 
 @dataclass(frozen=True)
 class ResultadoCancelamento:
     """situacao: CANCELADO, CANCELADO_TARDIO ou AGUARDA_HANDOFF (nada foi cancelado)."""
 
     situacao: str
-    agendamento: Agendamento
+    agendamento: Optional[Agendamento]
+    handoff: Optional[HandoffAberto] = None
 
 
 @dataclass(frozen=True)
@@ -81,8 +119,48 @@ class ResultadoRemarcacao:
     """situacao: REMARCADO, INALTERADO ou AGUARDA_HANDOFF (novo e None, nada mudou)."""
 
     situacao: str
-    antigo: Agendamento
+    antigo: Optional[Agendamento]
     novo: Optional[Agendamento]
+    handoff: Optional[HandoffAberto] = None
+
+
+def _handoff_se_configuracao_invalida(
+    travada,
+    operacao: Callable[[], object],
+    em_handoff: Callable[[HandoffAberto], object],
+    *,
+    agora: datetime,
+    mensagem_id: Optional[str],
+):
+    """Roda a operacao num SAVEPOINT. ConfiguracaoInvalida vira handoff.
+
+    O SAVEPOINT desfaz o que a operacao gravou antes do erro, como o cancelamento do
+    antigo numa remarcacao. Os demais erros desfazem o SAVEPOINT e sobem, com a
+    transacao externa utilizavel. O agendamento pedido nao entra no handoff: o id
+    pode nao ser do contato, e a falha pode ter vindo antes dessa verificacao.
+    """
+    session = travada.session
+    savepoint = session.begin_nested()
+    try:
+        resultado = operacao()
+    except ConfiguracaoInvalida as erro:
+        savepoint.rollback()
+        aberto = abrir_handoff(
+            travada, MOTIVO_CONFIGURACAO_INVALIDA, agora=agora, mensagem_id=mensagem_id
+        )
+        # So o tipo do erro: o texto da excecao repete ids e nao precisa ir ao log
+        logger.error(
+            "configuracao_invalida_em_handoff",
+            tenant_id=travada.tenant_id,
+            erro=type(erro).__name__,
+            handoff_id=aberto.id,
+        )
+        return em_handoff(aberto)
+    except Exception:
+        savepoint.rollback()
+        raise
+    savepoint.commit()
+    return resultado
 
 
 # --- configuracao lida do banco ---------------------------------------------------
@@ -237,20 +315,32 @@ def criar(
     servico_id: int,
     inicio: datetime,
     agora: datetime,
+    mensagem_id: Optional[str] = None,
     agenda: Optional[AgendaProvider] = None,
-) -> Agendamento:
+) -> ResultadoCriacao:
     """Cria o agendamento do contato da conversa, ou devolve o pedido repetido."""
     agenda = agenda or AgendaPropria()
     session = travada.session
-    return _criar_na_sessao(
-        session,
-        _regras(session),
-        agenda,
-        contato=travada.contato_telefone,
-        profissional_id=profissional_id,
-        servico_id=servico_id,
-        inicio=inicio,
+
+    def operacao():
+        novo = _criar_na_sessao(
+            session,
+            _regras(session),
+            agenda,
+            contato=travada.contato_telefone,
+            profissional_id=profissional_id,
+            servico_id=servico_id,
+            inicio=inicio,
+            agora=agora,
+        )
+        return ResultadoCriacao(CRIADO, novo)
+
+    return _handoff_se_configuracao_invalida(
+        travada,
+        operacao,
+        lambda aberto: ResultadoCriacao(AGUARDA_HANDOFF, None, aberto),
         agora=agora,
+        mensagem_id=mensagem_id,
     )
 
 
@@ -259,30 +349,45 @@ def cancelar(
     agendamento_id: int,
     *,
     agora: datetime,
+    mensagem_id: Optional[str] = None,
     agenda: Optional[AgendaProvider] = None,
 ) -> ResultadoCancelamento:
     """Cancela conforme a janela e a politica da clinica (Q-22, ADR 0009).
 
-    Com a politica handoff fora da janela, nada e cancelado e a situacao e
-    AGUARDA_HANDOFF. O registro do handoff e da tarefa 5.4.
+    Com a politica handoff fora da janela, nada e cancelado: o handoff
+    cancelamento_fora_da_janela e gravado com o agendamento e a situacao e
+    AGUARDA_HANDOFF.
     """
     agenda = agenda or AgendaPropria()
     session = travada.session
-    regras = _regras(session)
-    agendamento = _ativo_do_contato(
-        session, agenda, agendamento_id, travada.contato_telefone
+
+    def operacao():
+        regras = _regras(session)
+        agendamento = _ativo_do_contato(
+            session, agenda, agendamento_id, travada.contato_telefone
+        )
+        decisao = classificar_cancelamento(
+            agora,
+            agendamento.inicio,
+            regras.janela_cancelamento_horas,
+            regras.politica_cancelamento_fora_janela,
+        )
+        if decisao == ABRIR_HANDOFF:
+            aberto = _handoff_fora_da_janela(travada, agendamento, agora, mensagem_id)
+            return ResultadoCancelamento(AGUARDA_HANDOFF, agendamento, aberto)
+        tardio = decisao == CANCELAR_TARDIO
+        cancelado = agenda.cancelar(session, agendamento.id, fora_da_janela=tardio)
+        return ResultadoCancelamento(
+            CANCELADO_TARDIO if tardio else CANCELADO, cancelado
+        )
+
+    return _handoff_se_configuracao_invalida(
+        travada,
+        operacao,
+        lambda aberto: ResultadoCancelamento(AGUARDA_HANDOFF, None, aberto),
+        agora=agora,
+        mensagem_id=mensagem_id,
     )
-    decisao = classificar_cancelamento(
-        agora,
-        agendamento.inicio,
-        regras.janela_cancelamento_horas,
-        regras.politica_cancelamento_fora_janela,
-    )
-    if decisao == ABRIR_HANDOFF:
-        return ResultadoCancelamento(AGUARDA_HANDOFF, agendamento)
-    tardio = decisao == CANCELAR_TARDIO
-    cancelado = agenda.cancelar(session, agendamento.id, fora_da_janela=tardio)
-    return ResultadoCancelamento(CANCELADO_TARDIO if tardio else CANCELADO, cancelado)
 
 
 def remarcar(
@@ -291,49 +396,64 @@ def remarcar(
     *,
     novo_inicio: datetime,
     agora: datetime,
+    mensagem_id: Optional[str] = None,
     agenda: Optional[AgendaProvider] = None,
 ) -> ResultadoRemarcacao:
     """Troca o horario, com o mesmo profissional e servico.
 
-    O antigo segue a regra de cancelamento. Cancelar o antigo e criar o novo rodam
-    num SAVEPOINT: se o novo for recusado, o antigo continua agendado e a transacao
-    segue utilizavel.
+    O antigo segue a regra de cancelamento. Fora da janela com a politica handoff,
+    nada muda e o handoff e gravado com o antigo. Cancelar o antigo e criar o novo
+    rodam num SAVEPOINT: se o novo for recusado, o antigo continua agendado e a
+    transacao segue utilizavel.
     """
     agenda = agenda or AgendaPropria()
     session = travada.session
-    regras = _regras(session)
     contato = travada.contato_telefone
-    antigo = _ativo_do_contato(session, agenda, agendamento_id, contato)
-    if novo_inicio == antigo.inicio:
-        return ResultadoRemarcacao(INALTERADO, antigo, antigo)
 
-    decisao = classificar_cancelamento(
-        agora,
-        antigo.inicio,
-        regras.janela_cancelamento_horas,
-        regras.politica_cancelamento_fora_janela,
-    )
-    if decisao == ABRIR_HANDOFF:
-        return ResultadoRemarcacao(AGUARDA_HANDOFF, antigo, None)
+    def operacao():
+        regras = _regras(session)
+        antigo = _ativo_do_contato(session, agenda, agendamento_id, contato)
+        if novo_inicio == antigo.inicio:
+            return ResultadoRemarcacao(INALTERADO, antigo, antigo)
 
-    savepoint = session.begin_nested()
-    try:
-        agenda.cancelar(session, antigo.id, fora_da_janela=decisao == CANCELAR_TARDIO)
-        novo = _criar_na_sessao(
-            session,
-            regras,
-            agenda,
-            contato=contato,
-            profissional_id=antigo.profissional_id,
-            servico_id=antigo.servico_id,
-            inicio=novo_inicio,
-            agora=agora,
+        decisao = classificar_cancelamento(
+            agora,
+            antigo.inicio,
+            regras.janela_cancelamento_horas,
+            regras.politica_cancelamento_fora_janela,
         )
-    except Exception:
-        savepoint.rollback()
-        raise
-    savepoint.commit()
-    return ResultadoRemarcacao(REMARCADO, antigo, novo)
+        if decisao == ABRIR_HANDOFF:
+            aberto = _handoff_fora_da_janela(travada, antigo, agora, mensagem_id)
+            return ResultadoRemarcacao(AGUARDA_HANDOFF, antigo, None, aberto)
+
+        savepoint = session.begin_nested()
+        try:
+            agenda.cancelar(
+                session, antigo.id, fora_da_janela=decisao == CANCELAR_TARDIO
+            )
+            novo = _criar_na_sessao(
+                session,
+                regras,
+                agenda,
+                contato=contato,
+                profissional_id=antigo.profissional_id,
+                servico_id=antigo.servico_id,
+                inicio=novo_inicio,
+                agora=agora,
+            )
+        except Exception:
+            savepoint.rollback()
+            raise
+        savepoint.commit()
+        return ResultadoRemarcacao(REMARCADO, antigo, novo)
+
+    return _handoff_se_configuracao_invalida(
+        travada,
+        operacao,
+        lambda aberto: ResultadoRemarcacao(AGUARDA_HANDOFF, None, None, aberto),
+        agora=agora,
+        mensagem_id=mensagem_id,
+    )
 
 
 def disponibilidade(
@@ -343,8 +463,9 @@ def disponibilidade(
     servico_id: int,
     dia: date,
     agora: datetime,
+    mensagem_id: Optional[str] = None,
     agenda: Optional[AgendaProvider] = None,
-) -> list[datetime]:
+) -> ResultadoDisponibilidade:
     """Inicios livres do dia local que tambem passam nas regras da clinica.
 
     O provider responde expediente e ocupacao. A antecedencia minima e maxima e
@@ -352,19 +473,42 @@ def disponibilidade(
     """
     agenda = agenda or AgendaPropria()
     session = travada.session
-    regras = _regras(session)
-    duracao = _duracao(session, profissional_id, servico_id)
-    livres = []
-    for inicio in agenda.disponibilidade(
-        session,
-        profissional_id=profissional_id,
-        dia=dia,
-        duracao_minutos=duracao,
-        fuso=regras.fuso,
-    ):
-        try:
-            validar_antecedencia(agora, inicio, regras)
-        except RegraViolada:
-            continue
-        livres.append(inicio)
-    return livres
+
+    def operacao():
+        regras = _regras(session)
+        duracao = _duracao(session, profissional_id, servico_id)
+        livres = []
+        for inicio in agenda.disponibilidade(
+            session,
+            profissional_id=profissional_id,
+            dia=dia,
+            duracao_minutos=duracao,
+            fuso=regras.fuso,
+        ):
+            try:
+                validar_antecedencia(agora, inicio, regras)
+            except RegraViolada:
+                continue
+            livres.append(inicio)
+        return ResultadoDisponibilidade(DISPONIVEL, livres)
+
+    return _handoff_se_configuracao_invalida(
+        travada,
+        operacao,
+        lambda aberto: ResultadoDisponibilidade(AGUARDA_HANDOFF, [], aberto),
+        agora=agora,
+        mensagem_id=mensagem_id,
+    )
+
+
+def _handoff_fora_da_janela(
+    travada, agendamento: Agendamento, agora: datetime, mensagem_id: Optional[str]
+) -> HandoffAberto:
+    """Handoff do cancelamento fora da janela, com o agendamento do proprio contato."""
+    return abrir_handoff(
+        travada,
+        MOTIVO_CANCELAMENTO_FORA_DA_JANELA,
+        agora=agora,
+        agendamento_id=agendamento.id,
+        mensagem_id=mensagem_id,
+    )
