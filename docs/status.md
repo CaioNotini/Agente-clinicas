@@ -10,8 +10,7 @@ Estado verificado em 2026-11-24. O histórico detalhado de cada mudança fica no
 
 ## Onde estamos
 
-** Etapa ativa**:
-Proximo passo e etapa ativa é o desenvolvimento da etapa 6, que ainda não foi iniciada.
+**Etapa ativa: 6, LLMClient com API direta.** A etapa 5 está concluída.
 
 - Feitas: 5.5 (tabela `agendamentos`, conflito pelo [ADR 0004](./decisions/0004-conflito-de-horario.md)), 5.1 (`AgendaProvider` e `AgendaPropria`) 5.2 (regras de antecedência, expediente, conflito, duplicidade e janela de cancelamento em `app/agenda/regras.py`, descritas na seção 7 da [arquitetura](./arquitetura.md) e testadas nos dois cenários) 5.3 (serviço de agendamento em `app/agenda/servico.py`: criar, remarcar, cancelar e disponibilidade, com SAVEPOINT, `23P01` traduzido, nova tentativa no `40P01`, conclusão atômica do job e testes de isolamento da carga) e 5.4 (handoff gravado em `app/handoff/abertura.py`, sem mudar o estado da conversa, pela revisão do [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md)).
 - As decisões do [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md) (Q-21 a Q-24) estão implementadas como blocos reutilizáveis: schema novo, conversão de fuso (`app/core/fuso.py`), regras puras de duração e cancelamento (`app/agenda/regras.py`) e mensagens fixas (`app/mensagens/fixas.py`).
@@ -22,8 +21,8 @@ Proximo passo e etapa ativa é o desenvolvimento da etapa 6, que ainda não foi 
 | ------ | ------------------------------------------------- |
 | 0      | aberta, falta o conteúdo de `pergs_bloqueadas.md` |
 | 1 a 5  | concluídas                                        |
-| 6      | próximo passo                                     |
-| 5 a 21 | não iniciadas                                     |
+| 6      | ativa                                             |
+| 7 a 21 | não iniciadas                                     |
 
 ## O que está verificado
 
@@ -62,6 +61,7 @@ O que o código garante hoje, com a decisão de cada ponto:
 
 - 13: não abrir handoff novo se já houver um aberto para a mesma conversa, motivo e agendamento. Na 5.4 cada pedido grava uma linha.
 - 13: na remarcação fora da janela, o novo horário não é validado antes de abrir o handoff.
+- 14: validar o nome do fuso ao gravar a configuração da clínica.
 - 14: com entradas fora da fila, um `23P01` contra agendamento do próprio contato, sobreposto e com outro início, dá `HorarioIndisponivel` em vez de `AgendamentoDuplicado`, tanto na criação quanto na remarcação. Na remarcação o antigo continua ativo, porque o erro sobe pelo SAVEPOINT. Faz parte da ressalva sobre entradas fora da fila na seção 7 da [arquitetura](./arquitetura.md#7-modelo-de-dados).
 - 7: o `mensagem_id` passado ao serviço deve vir do job. A FK garante a mesma clínica, mas não o mesmo contato.
 - LGPD: a exclusão do titular que apague agendamentos precisa tratar antes os handoffs que apontam para eles (FK `NO ACTION`).

@@ -2,7 +2,8 @@
 
 O armazenamento e sempre em UTC. As regras de antecedencia, janela de cancelamento
 e lembretes, e a exibicao ao paciente, usam o fuso da clinica. Esta e a funcao unica
-de conversao, e o nome do fuso e validado antes de gravar.
+de conversao, e o nome do fuso e validado na leitura das regras da clinica. A
+aplicacao ainda nao grava clinicas.fuso.
 
 tzdata entra no requirements porque o Windows nao traz a base de fusos do sistema,
 e sem ela o zoneinfo nao encontra 'America/Sao_Paulo'.

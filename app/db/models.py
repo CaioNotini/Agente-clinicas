@@ -44,7 +44,8 @@ class Clinica(Base):
     telefone = Column(String(20))
     telefone_plantao = Column(String(20))
     # Fuso IANA da clinica. As regras de antecedencia, janela e lembretes usam este
-    # fuso. O armazenamento continua em UTC (ADR 0009). Validado na aplicacao ao gravar.
+    # fuso. O armazenamento continua em UTC (ADR 0009). Validado na leitura
+    # (regras_da_clinica): a aplicacao ainda nao grava este campo.
     fuso = Column(
         String(40), nullable=False, server_default=text("'America/Sao_Paulo'")
     )
