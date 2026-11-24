@@ -48,9 +48,6 @@ O que o código garante hoje, com a decisão de cada ponto:
 
 ## Pendências
 
-**Ação do desenvolvedor**
-
-- Trocar a senha local de `worker_jobs` e rodar `python -m scripts.definir_senhas`. Ela apareceu na saída de um teste que falhou em 2026-11-18. O teste foi removido, e o `connect_timeout` do worker ficou sem teste automático.
 
 **Decisões recentes**
 
