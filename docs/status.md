@@ -10,7 +10,8 @@ Estado verificado em 2026-11-24. O histórico detalhado de cada mudança fica no
 
 ## Onde estamos
 
-**Etapa ativa: 5, agendamento e handoff determinísticos.** Todas as tarefas feitas. O critério de pronto de [`etapas.md`](./etapas.md) foi conferido em 2026-11-24 e aguarda a validação do desenvolvedor para a etapa ser dada como concluída.
+** Etapa ativa**:
+Proximo passo e etapa ativa é o desenvolvimento da etapa 6, que ainda não foi iniciada.
 
 - Feitas: 5.5 (tabela `agendamentos`, conflito pelo [ADR 0004](./decisions/0004-conflito-de-horario.md)), 5.1 (`AgendaProvider` e `AgendaPropria`) 5.2 (regras de antecedência, expediente, conflito, duplicidade e janela de cancelamento em `app/agenda/regras.py`, descritas na seção 7 da [arquitetura](./arquitetura.md) e testadas nos dois cenários) 5.3 (serviço de agendamento em `app/agenda/servico.py`: criar, remarcar, cancelar e disponibilidade, com SAVEPOINT, `23P01` traduzido, nova tentativa no `40P01`, conclusão atômica do job e testes de isolamento da carga) e 5.4 (handoff gravado em `app/handoff/abertura.py`, sem mudar o estado da conversa, pela revisão do [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md)).
 - As decisões do [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md) (Q-21 a Q-24) estão implementadas como blocos reutilizáveis: schema novo, conversão de fuso (`app/core/fuso.py`), regras puras de duração e cancelamento (`app/agenda/regras.py`) e mensagens fixas (`app/mensagens/fixas.py`).
@@ -20,13 +21,13 @@ Estado verificado em 2026-11-24. O histórico detalhado de cada mudança fica no
 | Etapa  | Estado                                            |
 | ------ | ------------------------------------------------- |
 | 0      | aberta, falta o conteúdo de `pergs_bloqueadas.md` |
-| 1 a 4  | concluídas                                        |
-| 5      | ativa                                             |
-| 6 a 21 | não iniciadas                                     |
+| 1 a 5  | concluídas                                        |
+| 6      | próximo passo                                     |
+| 5 a 21 | não iniciadas                                     |
 
 ## O que está verificado
 
-Última verificação em 2026-11-23, no banco do Docker local:
+Última verificação em 2026-11-24, no banco do Docker local:
 
 - `pytest tests/ -q`: `442 passed`.
 - Ciclo de migrations (`upgrade head`, `downgrade base`, `upgrade head`), `alembic check` e [`scripts/verificar_pks.sql`](../scripts/verificar_pks.sql) passaram. Head: `c3d8e5a1f297`.
@@ -47,7 +48,6 @@ O que o código garante hoje, com a decisão de cada ponto:
 - Senhas das roles aplicadas por script, sem passo manual ([ADR 0006](./decisions/0006-provisionamento-de-roles.md)).
 
 ## Pendências
-
 
 **Decisões recentes**
 
