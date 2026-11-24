@@ -28,8 +28,9 @@ Estado verificado em 2026-11-24. O histórico detalhado de cada mudança fica no
 
 Última verificação em 2026-11-24, no banco do Docker local:
 
-- `pytest tests/ -q`: `442 passed`.
-- Ciclo de migrations (`upgrade head`, `downgrade base`, `upgrade head`), `alembic check` e [`scripts/verificar_pks.sql`](../scripts/verificar_pks.sql) passaram. Head: `c3d8e5a1f297`.
+- `pytest tests/ -q`: `448 passed`, no `.venv` e num ambiente limpo instalado do zero pelo `requirements-dev.txt`, depois da limpeza de dependências da rodada 4.
+- O banco local estava em `45ba5d9bc62d` e foi levado ao head `c3d8e5a1f297` com `alembic upgrade head`. O `alembic check` passou.
+- Ciclo de migrations (`upgrade head`, `downgrade base`, `upgrade head`) e [`scripts/verificar_pks.sql`](../scripts/verificar_pks.sql): última execução na CI do commit `99cc552`. Os commits da rodada 4 aguardam a CI.
 - Setup do zero só pelo [`README.md`](../README.md), num clone limpo, passou em 2026-11-20. A repetição de 2026-11-24 parou no passo 4. O hook `block_env` barra a cópia do arquivo de exemplo, e em seguida o Docker Desktop parou de responder. Pendente.
 - pylint, black e isort passam e reprovam a CI quando falham.
 - Prova por mutação dos testes de isolamento do serviço (`tests/isolation/test_servico_isolamento.py`): rodando sem RLS e sem o filtro explícito de tenant, os 7 testes que provam isolamento falham. A mutação foi rodada à mão e não faz parte da suíte. A segunda barreira (filtro explícito) da verificação de duplicata da fila tem teste próprio, `test_sem_rls_o_filtro_de_tenant_separa_colisao_de_duplicata` em [`test_dedupe_mensagens.py`](../tests/concurrency/test_dedupe_mensagens.py), que roda sem RLS pela conta de administração. A do serviço e a de `concluir_job` continuam sem teste próprio, porque com o RLS ativo elas não mudam o resultado.
@@ -71,6 +72,7 @@ O que o código garante hoje, com a decisão de cada ponto:
 - 7: reduzir os grants de `app_clinicas`, só com pedido explícito e ADR (item A4 do [plano](./diagnosticos/2026-11-18-plano-rodada3.md)). O UPDATE em `jobs` precisa continuar, pelo ADR 0008. Os grants de `worker_jobs` também são mais amplos que o uso, como registra o ADR 0002.
 - 7: ao reduzir os grants (A4), o teste de FKs pelo catálogo passa a usar `pg_attribute` em vez de `information_schema.columns`, que só lista colunas com privilégio da role (B15 da [rodada 4](./diagnosticos/2026-11-24-rodada4.md)).
 - 7: usar `validar_transicao` em toda escrita de estado (C4).
+- 7: alinhar a descrição de `log_auditoria` na seção 7 da [arquitetura](./arquitetura.md) com as colunas `acao`, `descricao` e `dados` quando a auditoria for implementada. A ambiguidade continua listada abaixo até lá.
 - 9: decidir a conduta para a conversa depois de uma mensagem morta. Risco aceito até lá ([ADR 0005](./decisions/0005-ordem-por-conversa.md)).
 - 9: a disponibilidade oferece horários em que o próprio contato já tem consulta com outro profissional, e a criação os recusa depois com `AgendamentoDuplicado`. Decidir junto com a ferramenta `verificar_disponibilidade` (C8 da rodada 4).
 - 12: índices das colunas filhas das FKs, índice parcial da fila e retenção de jobs (C1 e C5).
@@ -82,7 +84,6 @@ O que o código garante hoje, com a decisão de cada ponto:
 **Ambiguidades de documentação**
 
 - [`FAQ.md`](./fake_clinic/FAQ.md) cita [`pergs_bloqueadas.md`](./fake_clinic/pergs_bloqueadas.md) como fonte de duas perguntas administrativas, e esse arquivo só tem perguntas clínicas e de urgência.
-- [`principios.md`](./principios.md) cita "D10" no princípio 6, e não existe decisão com esse identificador.
 - [`estudo.md`](./estudo.md), seção 4, cita um "endpoint de chat de teste" que nenhuma etapa prevê.
 - A seção 7 da [arquitetura](./arquitetura.md) diz que `log_auditoria` guarda categoria e texto original, e a tabela tem `acao`, `descricao` e `dados`.
 
