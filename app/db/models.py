@@ -177,6 +177,8 @@ class Mensagem(Base):
     __table_args__ = (
         Index("idx_mensagens_tenant_contato", "tenant_id", "contato_telefone"),
         CheckConstraint("direcao IN ('entrada', 'saida')", name="ck_mensagens_direcao"),
+        # Alvo da FK composta de handoffs.mensagem_id (ADR 0007)
+        UniqueConstraint("tenant_id", "id", name="uq_mensagens_tenant_id_id"),
     )
 
 
@@ -323,6 +325,13 @@ class Handoff(Base):
     assumido_em = Column(DateTime)
     devolvido_em = Column(DateTime)
     criada_em = Column(DateTime, server_default=func.now())
+    # Copia do texto que o bot informou ao paciente na abertura, nunca a mensagem do
+    # paciente, e o limite calculado do prazo da clinica (revisao do ADR 0009)
+    texto_paciente = Column(String(600))
+    responder_ate = Column(DateTime(timezone=True))
+    agendamento_id = Column(Integer)
+    # So a referencia da mensagem de origem, nunca o conteudo
+    mensagem_id = Column(String(100))
 
     __table_args__ = (
         Index("idx_handoffs_tenant", "tenant_id"),
@@ -336,6 +345,20 @@ class Handoff(Base):
             ["tenant_id", "conversa_id"],
             ["conversas.tenant_id", "conversas.id"],
             name="fk_handoffs_conversa_id_tenant",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "agendamento_id"],
+            ["agendamentos.tenant_id", "agendamentos.id"],
+            name="fk_handoffs_agendamento_id_tenant",
+        ),
+        # Na migration o SET NULL tem a lista de colunas (mensagem_id): a exclusao da
+        # mensagem (LGPD) zera so a referencia, e tenant_id continua preenchido. O
+        # SQLAlchemy nao aceita a lista aqui, entao o schema vem sempre da migration.
+        ForeignKeyConstraint(
+            ["tenant_id", "mensagem_id"],
+            ["mensagens.tenant_id", "mensagens.id"],
+            name="fk_handoffs_mensagem_id_tenant",
+            ondelete="SET NULL",
         ),
     )
 
@@ -422,6 +445,8 @@ class Agendamento(Base):
             name="ex_agendamentos_conflito",
         ),
         Index("idx_agendamentos_tenant", "tenant_id"),
+        # Alvo da FK composta de handoffs.agendamento_id (ADR 0007)
+        UniqueConstraint("tenant_id", "id", name="uq_agendamentos_tenant_id_id"),
         # FK composta: o registro pai precisa ser da mesma clinica (ADR 0007)
         ForeignKeyConstraint(
             ["tenant_id", "profissional_id"],
