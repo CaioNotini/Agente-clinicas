@@ -55,6 +55,3 @@ logs/
 postgres_data/
 *.db
 *.sqlite
-
-# Docker
-docs/glossario.md

@@ -2,23 +2,17 @@
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 pydantic==2.5.0
-pydantic-settings==2.1.0
 psycopg2-binary==2.9.10
 
 # Database
 sqlalchemy==2.0.23
 alembic==1.13.1
-psycopg[binary]==3.3.6
 
 # Environment & Config
 python-dotenv==1.0.0
 
 # LLM & AI
 anthropic==0.25.7
-
-# Embeddings & Vectors
-requests==2.31.0
-numpy==1.26.2
 
 # Logging & Observability
 structlog==24.1.0
@@ -27,7 +21,6 @@ structlog==24.1.0
 httpx==0.25.2
 
 # Utilities
-python-dateutil==2.8.2
 # Base de fusos IANA para o zoneinfo (Q-23, ADR 0009). Necessaria no Windows, que
 # nao traz a base de fusos do sistema.
 tzdata==2024.1

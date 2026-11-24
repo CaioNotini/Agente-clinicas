@@ -55,17 +55,17 @@ A diferença entre estudo e MVP está em três pontos: canal (CLI no estudo, Wha
 
 | Parte                                                               | Seção da arquitetura v2.1 | No estudo                                                 | Só no MVP                         |
 | ------------------------------------------------------------------- | ------------------------- | --------------------------------------------------------- | --------------------------------- |
-| Classificação com confiança e mensagens fixas                       | 8.3                       | Etapa 7                                                   | —                                 |
-| Máquina de estados reduzida e lock por conversa                     | 8.1                       | Etapa 4                                                   | —                                 |
-| Fila de jobs com `SKIP LOCKED` e deduplicação                       | 8.1                       | Etapa 3                                                   | —                                 |
+| Classificação com confiança e mensagens fixas                       | 8.3                       | Etapa 7                                                   | não se aplica                                 |
+| Máquina de estados reduzida e lock por conversa                     | 8.1                       | Etapa 4                                                   | não se aplica                                 |
+| Fila de jobs com `SKIP LOCKED` e deduplicação                       | 8.1                       | Etapa 3                                                   | não se aplica                                 |
 | RLS, `tenant_id` e teste de isolamento                              | D-04, seção 9.3           | Etapa 2 (obrigatório)                                     | Teste também no painel (etapa 14) |
-| Function calling com as 4 ferramentas                               | 7                         | Etapa 9                                                   | —                                 |
-| RAG por clínica com pgvector e Cohere via Bedrock                   | D-14                      | Etapa 8                                                   | —                                 |
-| Agendamento atrás de `AgendaProvider`                               | D-17                      | Só `AgendaPropria`                                        | —                                 |
-| Lembretes T-7 e T-1 com regras de borda                             | 8.2                       | Etapa 11                                                  | —                                 |
-| Handoff com `human_mode` e takeover                                 | 8.4                       | Etapa 13                                                  | —                                 |
+| Function calling com as 4 ferramentas                               | 7                         | Etapa 9                                                   | não se aplica                                 |
+| RAG por clínica com pgvector e Cohere via Bedrock                   | D-14                      | Etapa 8                                                   | não se aplica                                 |
+| Agendamento atrás de `AgendaProvider`                               | D-17                      | Só `AgendaPropria`                                        | não se aplica                                 |
+| Lembretes T-7 e T-1 com regras de borda                             | 8.2                       | Etapa 11                                                  | não se aplica                                 |
+| Handoff com `human_mode` e takeover                                 | 8.4                       | Etapa 13                                                  | não se aplica                                 |
 | Notificação de handoff no WhatsApp pessoal                          | 8.4                       | Etapa 13, com canal simulado                              | Template real aprovado (etapa 20) |
-| Painel de monitoramento com login                                   | 5, D-22                   | Etapa 14                                                  | —                                 |
+| Painel de monitoramento com login                                   | 5, D-22                   | Etapa 14                                                  | não se aplica                                 |
 | Tabelas `handoffs`, `log_auditoria`, `consents`, `privacy_requests` | 7                         | Schema na etapa 2. `consents` e `privacy_requests` vazias | Uso real no piloto                |
 | Métricas                                                            | 12                        | Log estruturado e script de relatório                     | Painel mostra as métricas         |
 | WhatsApp Cloud API e templates                                      | 4                         | Fora (canal CLI)                                          | Etapas 17 e 20                    |
