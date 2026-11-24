@@ -61,6 +61,7 @@ O que o código garante hoje, com a decisão de cada ponto:
 
 - 13: não abrir handoff novo se já houver um aberto para a mesma conversa, motivo e agendamento. Na 5.4 cada pedido grava uma linha.
 - 13: na remarcação fora da janela, o novo horário não é validado antes de abrir o handoff.
+- 13: `handoffs` mistura `responder_ate` (timestamptz) com `criada_em`, `notificado_em`, `assumido_em` e `devolvido_em` (timestamp sem fuso). Resolver antes de comparar o prazo com esses instantes (C10 da rodada 4).
 - 14: validar o nome do fuso ao gravar a configuração da clínica.
 - 14: com entradas fora da fila, um `23P01` contra agendamento do próprio contato, sobreposto e com outro início, dá `HorarioIndisponivel` em vez de `AgendamentoDuplicado`, tanto na criação quanto na remarcação. Na remarcação o antigo continua ativo, porque o erro sobe pelo SAVEPOINT. Faz parte da ressalva sobre entradas fora da fila na seção 7 da [arquitetura](./arquitetura.md#7-modelo-de-dados).
 - 7: o `mensagem_id` passado ao serviço deve vir do job. A FK garante a mesma clínica, mas não o mesmo contato.
@@ -68,11 +69,15 @@ O que o código garante hoje, com a decisão de cada ponto:
 - Outros erros permanentes, como o payload sem `contato_telefone`, ainda consomem as 3 tentativas.
 - `55P03` (lock_timeout de 5 s esperando outra transação na verificação da constraint de conflito) sobe sem tratamento próprio, e o job tenta de novo.
 - 7: reduzir os grants de `app_clinicas`, só com pedido explícito e ADR (item A4 do [plano](./diagnosticos/2026-11-18-plano-rodada3.md)). O UPDATE em `jobs` precisa continuar, pelo ADR 0008. Os grants de `worker_jobs` também são mais amplos que o uso, como registra o ADR 0002.
+- 7: ao reduzir os grants (A4), o teste de FKs pelo catálogo passa a usar `pg_attribute` em vez de `information_schema.columns`, que só lista colunas com privilégio da role (B15 da [rodada 4](./diagnosticos/2026-11-24-rodada4.md)).
 - 7: usar `validar_transicao` em toda escrita de estado (C4).
 - 9: decidir a conduta para a conversa depois de uma mensagem morta. Risco aceito até lá ([ADR 0005](./decisions/0005-ordem-por-conversa.md)).
+- 9: a disponibilidade oferece horários em que o próprio contato já tem consulta com outro profissional, e a criação os recusa depois com `AgendamentoDuplicado`. Decidir junto com a ferramenta `verificar_disponibilidade` (C8 da rodada 4).
 - 12: índices das colunas filhas das FKs, índice parcial da fila e retenção de jobs (C1 e C5).
+- 12: teste de UPDATE que move uma linha própria para outra clínica (`SET tenant_id`), recusado pelo WITH CHECK da policy (C9 da rodada 4).
 - 6: destino de `conversas.historico` (C6).
 - 17: derivar o `tenant_id` do número de destino no webhook (A7), e envio de WhatsApp como job novo, com idempotência no provedor (ADR 0008).
+- 15: `ON DELETE SET NULL (mensagem_id)` exige Postgres 15 ou mais. Conferir a versão do Supabase na tarefa 15.2 (C11 da rodada 4).
 
 **Ambiguidades de documentação**
 
