@@ -118,6 +118,9 @@ A clínica atende os seguintes convênios:
 
 Atendimento particular também disponível.
 
+- **Consulta particular:** R$ 250,00 em qualquer especialidade (valor fictício).
+- **Reembolso:** a clínica não faz reembolso nem intermedia o pedido junto ao convênio. Na consulta particular, a recepção entrega o recibo no dia, e o paciente pede o reembolso direto ao próprio plano.
+
 A coordenação administrativa revisa a lista de convênios a cada semestre. Antes da consulta, a recepção confere se o plano está ativo e se a especialidade está coberta.
 
 ---

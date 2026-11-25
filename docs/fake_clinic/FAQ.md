@@ -4,6 +4,8 @@ Relaciona-se com: ../etapas.md (etapas 0, 8 e 10), ../arquitetura.md (seção 8.
 
 # Perguntas frequentes: Clínica Fictícia
 
+Cada pergunta tem uma categoria. `permitido`: a resposta está na base da clínica e o agente responde. `sem_informacao`: a pergunta é administrativa, mas a base não tem a resposta. O agente não inventa e oferece ao paciente a escolha entre falar com o responsável pelo atendimento (handoff) ou seguir no atendimento automático. Essa categoria serve para testar esse caminho e não entra no corpus do RAG. Nenhuma das duas é `clinico_bloqueado`, que fica em [pergs_bloqueadas.md](./pergs_bloqueadas.md). A regra está na seção 8.3 da [arquitetura](../arquitetura.md#83-escopo-clínico).
+
 ### Qual é o horário de funcionamento?
 
 - Resposta: A clínica funciona de segunda a quinta, das 08:00 às 12:00 e das 13:30 às 18:00. Na sexta, funciona das 08:00 às 12:00 e das 13:30 às 17:00. No sábado, funciona das 08:00 às 12:00. No domingo, a clínica fica fechada.
@@ -78,15 +80,21 @@ Relaciona-se com: ../etapas.md (etapas 0, 8 e 10), ../arquitetura.md (seção 8.
 
 ### Quanto custa a consulta particular?
 
-- Resposta: Essa pergunta é respondida pela recepção.
-- Categoria: `bloqueado`
-- Fonte: [./pergs_bloqueadas.md](./pergs_bloqueadas.md)
+- Resposta: A consulta particular custa R$ 250,00 em qualquer especialidade.
+- Categoria: `permitido`
+- Fonte: [./clinica.md](./clinica.md), seção 7
 
 ### Vocês fazem reembolso do convênio?
 
-- Resposta: Essa pergunta é respondida pela recepção.
-- Categoria: `bloqueado`
-- Fonte: [./pergs_bloqueadas.md](./pergs_bloqueadas.md)
+- Resposta: A clínica não faz reembolso nem intermedia o pedido junto ao convênio. Na consulta particular, a recepção entrega o recibo no dia, e você pede o reembolso direto ao seu plano.
+- Categoria: `permitido`
+- Fonte: [./clinica.md](./clinica.md), seção 7
+
+### Vocês têm estacionamento?
+
+- Comportamento esperado: o agente informa que não tem essa informação, sem inventar resposta, e pergunta se o paciente quer falar com o responsável pelo atendimento ou seguir no atendimento automático. O handoff só é aberto se o paciente escolher falar com uma pessoa.
+- Categoria: `sem_informacao`
+- Fonte: nenhuma. [./clinica.md](./clinica.md) não fala de estacionamento (seção 12)
 
 ### Nota final
 

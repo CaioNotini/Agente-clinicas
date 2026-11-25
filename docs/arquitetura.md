@@ -253,9 +253,9 @@ SELECT estado_conversa FROM conversas WHERE id = ... FOR UPDATE  trava da conver
 Se human_mode = true → não responde. A mensagem aparece no painel
  ↓
 Classificação (categoria + confiança)
- ├─ administrativo / agendamento  → RAG / function calling
+ ├─ administrativo / agendamento  → RAG / function calling. Sem informação na base → oferece handoff ou seguir no automático
  ├─ clinico_bloqueado             → mensagem fixa + handoff + log_auditoria
- ├─ urgencia                      → mensagem de segurança fixa (192 ou pronto-socorro, incondicional) + log_auditoria. O handoff é secundário e não é a via de resposta prometida ao paciente
+ ├─ urgencia                      → mensagem de segurança fixa (192 ou pronto-socorro, incondicional, e CVV 188) + log_auditoria. O handoff é secundário e não é a via de resposta prometida ao paciente
  └─ ambiguo, ou confiança < 0,7   → 1 esclarecimento → handoff se persistir
  ↓
 Channel.send_text(...)
@@ -324,15 +324,19 @@ A de `clinico_bloqueado` não cita recepção e não promete resposta imediata, 
 
 A de `urgencia` orienta o paciente a procurar o serviço de emergência de forma incondicional e imediata, e nunca depende do handoff nem usa o texto de handoff da clínica ([ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md)). Exemplo:
 
-> "Se isto for uma emergência, ligue 192 (SAMU) ou procure o pronto-socorro mais próximo agora. Este canal não faz atendimento de urgência."
+> "Se isto for uma emergência, ligue 192 (SAMU) ou procure o pronto-socorro mais próximo agora. Se você está pensando em se machucar, ligue 188 (CVV), a qualquer hora. Este canal não faz atendimento de urgência."
+
+Existe uma única mensagem fixa de `urgencia`. Ela cobre todo risco imediato à vida, inclusive o pensamento de autolesão, e sempre traz o 192 ou o pronto-socorro de forma incondicional e o CVV (188). Não há subcategoria de urgência. Uma subcategoria exigiria que o classificador acertasse também o subtipo, e um erro ali deixaria a pessoa sem o CVV. O texto final é escrito na tarefa 7.3 e revisado na etapa 20.
 
 **Linha de corte:** se a resposta muda conforme o estado de saúde da pessoa, é fora do escopo. Se é igual para qualquer paciente, é administrativo.
+
+**Perguntas administrativas.** Perguntas administrativas e informativas, como valor da consulta particular, reembolso, convênios aceitos, horários, endereço e documentos necessários, são da categoria `administrativo` e nunca `clinico_bloqueado`. O agente responde quando a clínica fornece a informação na configuração ou na base de conhecimento. Quando a informação não existe, o agente não inventa resposta. Ele diz que não tem a informação e oferece ao paciente a escolha entre falar com o responsável pelo atendimento (handoff) ou seguir no atendimento automático. Os casos de teste estão no [FAQ](./fake_clinic/FAQ.md).
 
 **Conteúdo de RAG.** Cada chunk de `conhecimento_clinica` tem `categoria`. A busca filtra por `tenant_id` e por categoria permitida antes da similaridade, para que um FAQ mal escrito pela clínica não vire fonte de resposta clínica.
 
 ### 8.4 Handoff e painel
 
-Um handoff é aberto quando: a mensagem é `clinico_bloqueado` ou `urgencia`, a conversa cai em `escalada`, ou o paciente não é entendido após o esclarecimento.
+Um handoff é aberto quando: a mensagem é `clinico_bloqueado` ou `urgencia`, a conversa cai em `escalada`, o paciente não é entendido após o esclarecimento, ou o paciente escolhe falar com uma pessoa depois de uma pergunta administrativa sem informação na base (seção 8.3).
 
 O responsável pelo atendimento humano é configurado pela clínica e pode ser uma recepção ou o próprio profissional. O aviso vai para `clinicas.telefone_plantao`, seja de quem for ([ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md)).
 

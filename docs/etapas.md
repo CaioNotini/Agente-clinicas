@@ -68,8 +68,8 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
 - **Objetivo:** criar a clínica fictícia, as perguntas frequentes e a lista de perguntas que o agente nunca responde. Esse conteúdo é usado como corpus do RAG e como casos de teste.
 - **Tarefas:**
   - 0.1 `clinica.md`, com profissionais, horários, convênios e regras de agendamento.
-  - 0.2 `FAQ.md`, com cada pergunta marcada como permitido ou bloqueado.
-  - 0.3 `pergs_bloqueadas.md`, preenchido pelo Caio.
+  - 0.2 `FAQ.md`, com cada pergunta marcada como `permitido` ou `sem_informacao`.
+  - 0.3 `pergs_bloqueadas.md`, com conteúdo aprovado pelo desenvolvedor.
 - **Código:** nenhum. Os arquivos ficam em [fake_clinic/](./fake_clinic/).
 - **Critério de pronto:**
   - os três arquivos existem e seguem o cabeçalho de relações.
@@ -176,7 +176,7 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
   - 6.4 backoff no retry de jobs, porque retry imediato com chamada de IA gera rajada de custo.
 - **Código:** `app/llm/`, `tests/unit/`.
 - **Critério de pronto:** o formato de resposta é testado com dublê, e uma chamada real registra tokens e latência.
-- **Atenção:** chamadas reais geram custo. Elas só são feitas com autorização prévia do Caio, conforme o orçamento do estudo.
+- **Atenção:** chamadas reais geram custo. Elas só são feitas com autorização prévia do desenvolvedor, conforme a regra 22 do [CLAUDE.md](../CLAUDE.md) e o orçamento do estudo.
 - **Fora do escopo:** Bedrock, que começa na etapa 16.
 
 ### Etapa 7: classificação, mensagens fixas e auditoria

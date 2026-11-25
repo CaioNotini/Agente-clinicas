@@ -10,15 +10,14 @@ Estado verificado em 2026-11-25. O histórico detalhado de cada mudança fica no
 
 ## Onde estamos
 
-**Etapa 6 concluída. Próxima etapa ativa: 7, classificação, mensagens fixas e auditoria.** As etapas 1 a 6 estão concluídas.
+**Etapa 6 concluída. Próxima etapa ativa: 7, classificação, mensagens fixas e auditoria.** As etapas 0 a 6 estão concluídas.
 
 Etapa 6 (concluída), resumo: chamada ao modelo por uma interface única. `LLMClient` e a implementação `AnthropicClient` sobre o SDK `anthropic==2.14.0` (versão `2026-10-21` da API, `max_retries=0`), com o modelo em `LLM_MODEL` (`claude-haiku-5-5`), validado só na criação do cliente. Hierarquia de erros transitório e permanente, com o permanente herdando de `ErroPermanente`. Telemetria de cada chamada no log estruturado, nos eventos `llm_chamada` e `llm_chamada_falhou`, sem prompt, conteúdo nem telefone. Backoff no retry de jobs, `min(base * 2 ** (tentativas - 1), teto)` com `base` de 60 s e `teto` de 1800 s, só no retry e nunca no `dead`. Teste real com o marcador `llm_real`, fora da CI. Decisões em [ADR 0010](./decisions/0010-llmclient.md) e [ADR 0005](./decisions/0005-ordem-por-conversa.md). O processamento ainda não chama o LLM. A ligação com o conteúdo da mensagem entra na etapa 7, com a classificação.
 
-| Etapa  | Estado                                            |
-| ------ | ------------------------------------------------- |
-| 0      | aberta, falta o conteúdo de `pergs_bloqueadas.md` |
-| 1 a 6  | concluídas                                        |
-| 7 a 21 | não iniciadas                                     |
+| Etapa  | Estado        |
+| ------ | ------------- |
+| 0 a 6  | concluídas    |
+| 7 a 21 | não iniciadas |
 
 ## O que está verificado
 
@@ -31,6 +30,7 @@ Etapa 6 (concluída), resumo: chamada ao modelo por uma interface única. `LLMCl
 - Setup do zero só pelo [`README.md`](../README.md), num clone limpo, passou em 2026-11-20. A repetição fica com o desenvolvedor, na máquina local dele, e não é pendência do agente.
 - pylint, black e isort passam e reprovam a CI quando falham.
 - Prova por mutação da etapa 5, à mão e fora da suíte: sem RLS e sem o filtro explícito de tenant, os testes de isolamento do serviço e do handoff falham, o que confirma as duas barreiras. A segunda barreira da verificação de duplicata da fila tem teste próprio, `test_sem_rls_o_filtro_de_tenant_separa_colisao_de_duplicata` em [`test_dedupe_mensagens.py`](../tests/concurrency/test_dedupe_mensagens.py), que roda sem RLS pela conta de administração. Sem o tratamento de `ErroPermanente`, os testes do worker falham.
+- Critério de pronto da etapa 0 conferido em 2026-11-25, com o conteúdo de [`pergs_bloqueadas.md`](./fake_clinic/pergs_bloqueadas.md) aprovado pelo desenvolvedor como a tarefa 0.3. Os três arquivos de [`fake_clinic/`](./fake_clinic/) têm o cabeçalho de relações. O [`FAQ.md`](./fake_clinic/FAQ.md) tem 15 perguntas, cada uma com categoria (14 `permitido` e 1 `sem_informacao`). A lista de bloqueadas tem 13 perguntas, 8 `clinico_bloqueado` e 5 `urgencia`, com formas indiretas nas perguntas 5 e 8. Os dados são fictícios (telefones `(00) 0000-000x`, CNPJ e CRM zerados, e-mails `.invalid`). Os únicos números reais são o 192 e o 188, de propósito.
 - Critério de pronto da etapa 5 conferido: cada função de `app/agenda/regras.py` tem teste unitário com casos de borda, e o handoff gravado aparece no banco pela leitura da conta `app_clinicas`.
 
 O que o código garante hoje, com a decisão de cada ponto:
@@ -45,11 +45,16 @@ O que o código garante hoje, com a decisão de cada ponto:
 
 ## Decisões recentes
 
+- 2026-11-25, etapa 0: existe uma única mensagem fixa de `urgencia`, que cobre todo risco imediato à vida, inclusive o pensamento de autolesão. Ela orienta o 192 ou o pronto-socorro de forma incondicional e cita o CVV (188), sem subcategoria de urgência. Perguntas administrativas nunca são `clinico_bloqueado`. Sem a informação na base, o agente oferece handoff ou seguir no automático. Regras na seção 8.3 da [arquitetura](./arquitetura.md#83-escopo-clínico).
+
 - 2026-11-25, C6: a coluna `conversas.historico` foi removida (migration `a5587f532a88`, com downgrade que a recria). Ela nunca foi lida nem escrita. O contexto do LLM da etapa 7 virá das últimas mensagens do contato, direto de `mensagens` (`contato_telefone`, `conteudo`, `direcao`, `criada_em` por tenant). Manter `historico` duplicaria o dado, com risco de divergência e mais um ponto a apagar na exclusão do titular (LGPD). Um resumo de conversas longas, se preciso na etapa 7, será coluna nova com contrato e ADR.
 
 ## Pendências
 
 **Previstas para etapas futuras**
+
+- 7.3: `MENSAGEM_URGENCIA` em [`fixas.py`](../app/mensagens/fixas.py) ainda não cita o CVV (188), decidido na seção 8.3 da [arquitetura](./arquitetura.md#83-escopo-clínico).
+- 8: o [`FAQ.md`](./fake_clinic/FAQ.md) não tem mais entradas clínicas. O critério "trechos marcados como bloqueado nunca são retornados" vai precisar de um trecho clínico de teste criado na própria etapa 8.
 
 - 13: não abrir handoff novo se já houver um aberto para a mesma conversa, motivo e agendamento. Na 5.4 cada pedido grava uma linha.
 - 13: na remarcação fora da janela, o novo horário não é validado antes de abrir o handoff.
@@ -76,7 +81,6 @@ O que o código garante hoje, com a decisão de cada ponto:
 
 **Ambiguidades de documentação**
 
-- [`FAQ.md`](./fake_clinic/FAQ.md) cita [`pergs_bloqueadas.md`](./fake_clinic/pergs_bloqueadas.md) como fonte de duas perguntas administrativas, e esse arquivo só tem perguntas clínicas e de urgência.
 - [`estudo.md`](./estudo.md), seção 4, cita um "endpoint de chat de teste" que nenhuma etapa prevê.
 - A seção 7 da [arquitetura](./arquitetura.md) diz que `log_auditoria` guarda categoria e texto original, e a tabela tem `acao`, `descricao` e `dados`.
 
