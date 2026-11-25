@@ -45,8 +45,11 @@ class RespostaLLM:
 class ConfigLLM:
     """Parametros do modelo, sem a chave da API.
 
-    esforco guarda o esforco de raciocinio quando o modelo o aceita. Fica None por
-    padrao, porque o Haiku do estudo nao usa (ADR 0010).
+    esforco guarda o esforco de raciocinio para enviar a API. Fica None por padrao,
+    o que nao desliga nada: o claude-haiku-5-5 tem raciocinio adaptativo sempre
+    ligado, com esforco padrao medium, e os tokens de raciocinio contam como saida,
+    dentro de max_tokens. None so significa que o cliente nao sobrescreve esse
+    padrao. Enviar o esforco a API ou remover o campo fica para a etapa 7 (ADR 0010).
     """
 
     modelo: str

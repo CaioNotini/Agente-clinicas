@@ -77,6 +77,7 @@ A mensagem do erro leva só o tipo, o status HTTP e o id da requisição. O text
 ### Configuração
 
 - Uma dataclass guarda `modelo`, `max_tokens` e `esforco`. A chave da API não entra nela. Também não entram `temperature`, `top_p` e `top_k`, que a versão `2026-10-21` recusa.
+- O campo `esforco` fica `None` por padrão, e isso não desliga o raciocínio. O modelo do estudo, `claude-haiku-5-5`, tem raciocínio adaptativo sempre ligado, com esforço padrão `medium`, e os tokens de raciocínio contam como saída, dentro de `max_tokens` (verificado na documentação do modelo em 2026-11-25). `None` só significa que o cliente não envia `effort` nem `thinking`, então o modelo usa o próprio padrão. Enviar o esforço à API ou remover o campo fica para a etapa 7.
 - `LLM_MODEL` não tem valor padrão no código. O identificador do modelo aparece só no [`.env.example`](../../.env.example).
 - Uma função de configuração do LLM no [`config.py`](../../app/config.py) lê `LLM_MODEL` e `ANTHROPIC_API_KEY` e levanta `RuntimeError` listando as que faltam, no mesmo padrão de `variaveis_obrigatorias`. Ela roda só quando o cliente é criado. Essa é a única checagem da chave, sem segunda checagem no construtor.
 - A chave é passada ao SDK explicitamente, como `api_key`.

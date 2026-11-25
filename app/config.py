@@ -52,8 +52,10 @@ WORKER_DATABASE_URL = _monta_url(
 # isso estas variáveis ficam fora de variaveis_obrigatorias.
 variaveis_llm = ["LLM_MODEL", "ANTHROPIC_API_KEY"]
 
-# Padrões do modelo que não vêm do .env. max_tokens limita a resposta do modelo, e o
-# esforço de raciocínio fica desligado (o Haiku do estudo não usa).
+# Padrões do modelo que não vêm do .env. max_tokens limita a resposta do modelo e
+# inclui os tokens de raciocínio. ESFORCO_PADRAO = None não desliga o raciocínio: o
+# claude-haiku-5-5 tem raciocínio adaptativo sempre ligado, com esforço padrão medium.
+# None só diz que o cliente não envia effort; enviar ou remover o campo é da etapa 7.
 MAX_TOKENS_PADRAO = 1024
 ESFORCO_PADRAO = None
 
