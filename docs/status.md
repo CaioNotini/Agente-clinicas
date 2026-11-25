@@ -10,22 +10,14 @@ Estado verificado em 2026-11-25. O histórico detalhado de cada mudança fica no
 
 ## Onde estamos
 
-**Etapa ativa: 6, LLMClient com API direta.** As etapas 1 a 5 estão concluídas.
+**Etapa 6 concluída. Próxima etapa ativa: 7, classificação, mensagens fixas e auditoria.** As etapas 1 a 6 estão concluídas.
 
-Etapa 6, progresso:
-
-- Passo 0 (preparação) concluído: SDK `anthropic==2.14.0`, na versão `2026-10-21` da API, com `max_retries=0`. O FastAPI passou para 0.108.0, pelo `anyio>=4.1` que o SDK exige. O modelo vem de `LLM_MODEL`, validada só na criação do cliente, e a chamada real tem o marcador `llm_real`, fora da CI. Contrato do `LLMClient`, hierarquia de erros e configuração no [ADR 0010](./decisions/0010-llmclient.md).
-- 6.1 a 6.4 concluídas: interface `LLMClient`, dataclasses e configuração do LLM (6.1), `AnthropicClient` com Claude Haiku e a hierarquia de erros (6.2), tokens e latência no log estruturado, nos eventos `llm_chamada` e `llm_chamada_falhou` (6.3), e backoff no retry de jobs, com `base` de 60 s e `teto` de 1800 s, só no retry e nunca no `dead` (6.4). Código em `app/llm/` e [`app/jobs/worker.py`](../app/jobs/worker.py). Evidência: `pytest tests/ -q` = `490 passed`, 1 warning conhecido, em 2026-11-25.
-- Chamada real concluída: `tests/llm_real/test_llm_real.py` (4 testes, pasta sem banco, marcador `llm_real` fora da CI). `pytest -m llm_real -v` rodado pelo desenvolvedor em 2026-11-25 = `4 passed`. Cobre texto simples (tokens, latência e evento `llm_chamada`), function calling real, e o mapeamento de erro 404 e 401 em `llm_chamada_falhou`.
-- Falta para fechar a etapa 6: só a decisão sobre o destino de `conversas.historico` (C6, nas pendências abaixo). O critério de pronto de código da etapa está atendido.
-
-Etapa 5 (concluída), resumo: agendar, remarcar, cancelar e disponibilidade em código determinístico, com `AgendaProvider` e `AgendaPropria`, regras puras em `app/agenda/regras.py`, serviço em `app/agenda/servico.py` e handoff gravado em `app/handoff/abertura.py` sem mudar o estado da conversa. Blocos reutilizáveis: schema novo, fuso (`app/core/fuso.py`) e mensagens fixas (`app/mensagens/fixas.py`). Decisões em [ADR 0004](./decisions/0004-conflito-de-horario.md), [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md) (Q-21 a Q-24) e seção 7 da [arquitetura](./arquitetura.md). O serviço ainda não é chamado pelo processamento das mensagens. A ligação com o conteúdo da mensagem entra na etapa 7, com a classificação.
+Etapa 6 (concluída), resumo: chamada ao modelo por uma interface única. `LLMClient` e a implementação `AnthropicClient` sobre o SDK `anthropic==2.14.0` (versão `2026-10-21` da API, `max_retries=0`), com o modelo em `LLM_MODEL` (`claude-haiku-5-5`), validado só na criação do cliente. Hierarquia de erros transitório e permanente, com o permanente herdando de `ErroPermanente`. Telemetria de cada chamada no log estruturado, nos eventos `llm_chamada` e `llm_chamada_falhou`, sem prompt, conteúdo nem telefone. Backoff no retry de jobs, `min(base * 2 ** (tentativas - 1), teto)` com `base` de 60 s e `teto` de 1800 s, só no retry e nunca no `dead`. Teste real com o marcador `llm_real`, fora da CI. Decisões em [ADR 0010](./decisions/0010-llmclient.md) e [ADR 0005](./decisions/0005-ordem-por-conversa.md). O processamento ainda não chama o LLM. A ligação com o conteúdo da mensagem entra na etapa 7, com a classificação.
 
 | Etapa  | Estado                                            |
 | ------ | ------------------------------------------------- |
 | 0      | aberta, falta o conteúdo de `pergs_bloqueadas.md` |
-| 1 a 5  | concluídas                                        |
-| 6      | ativa                                             |
+| 1 a 6  | concluídas                                        |
 | 7 a 21 | não iniciadas                                     |
 
 ## O que está verificado
