@@ -10,12 +10,14 @@ Estado verificado em 2026-11-24. O histórico detalhado de cada mudança fica no
 
 ## Onde estamos
 
-**Etapa ativa: 6, LLMClient com API direta.** A etapa 5 está concluída.
+**Etapa ativa: 6, LLMClient com API direta.** As etapas 1 a 5 estão concluídas.
 
-- Feitas: 5.5 (tabela `agendamentos`, conflito pelo [ADR 0004](./decisions/0004-conflito-de-horario.md)), 5.1 (`AgendaProvider` e `AgendaPropria`) 5.2 (regras de antecedência, expediente, conflito, duplicidade e janela de cancelamento em `app/agenda/regras.py`, descritas na seção 7 da [arquitetura](./arquitetura.md) e testadas nos dois cenários) 5.3 (serviço de agendamento em `app/agenda/servico.py`: criar, remarcar, cancelar e disponibilidade, com SAVEPOINT, `23P01` traduzido, nova tentativa no `40P01`, conclusão atômica do job e testes de isolamento da carga) e 5.4 (handoff gravado em `app/handoff/abertura.py`, sem mudar o estado da conversa, pela revisão do [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md)).
-- As decisões do [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md) (Q-21 a Q-24) estão implementadas como blocos reutilizáveis: schema novo, conversão de fuso (`app/core/fuso.py`), regras puras de duração e cancelamento (`app/agenda/regras.py`) e mensagens fixas (`app/mensagens/fixas.py`).
-- O serviço ainda não é chamado pelo processamento das mensagens. A ligação com o conteúdo da mensagem entra na etapa 7, com a classificação.
-- A 5.5 e a 5.1 foram feitas antes de a etapa 4 fechar, contra a regra de dependência de [`etapas.md`](./etapas.md). O desvio foi aceito pelo desenvolvedor.
+Etapa 6, progresso:
+
+- Passo 0 (preparação) concluído: SDK `anthropic==2.14.0`, na versão `2026-10-21` da API, com `max_retries=0`. O FastAPI passou para 0.108.0, pelo `anyio>=4.1` que o SDK exige. O modelo vem de `LLM_MODEL`, validada só na criação do cliente, e a chamada real tem o marcador `llm_real`, fora da CI. Contrato do `LLMClient`, hierarquia de erros e configuração no [ADR 0010](./decisions/0010-llmclient.md). Ainda sem código em `app/llm/`.
+- Pendentes: 6.1 interface `LLMClient`, 6.2 `AnthropicClient` com Claude Haiku, 6.3 registro de tokens e latência no log estruturado, e 6.4 backoff no retry de jobs. Detalhe em [`etapas.md`](./etapas.md).
+
+Etapa 5 (concluída), resumo: agendar, remarcar, cancelar e disponibilidade em código determinístico, com `AgendaProvider` e `AgendaPropria`, regras puras em `app/agenda/regras.py`, serviço em `app/agenda/servico.py` e handoff gravado em `app/handoff/abertura.py` sem mudar o estado da conversa. Blocos reutilizáveis: schema novo, fuso (`app/core/fuso.py`) e mensagens fixas (`app/mensagens/fixas.py`). Decisões em [ADR 0004](./decisions/0004-conflito-de-horario.md), [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md) (Q-21 a Q-24) e seção 7 da [arquitetura](./arquitetura.md). O serviço ainda não é chamado pelo processamento das mensagens. A ligação com o conteúdo da mensagem entra na etapa 7, com a classificação.
 
 | Etapa  | Estado                                            |
 | ------ | ------------------------------------------------- |
@@ -33,9 +35,8 @@ Estado verificado em 2026-11-24. O histórico detalhado de cada mudança fica no
 - Ciclo de migrations (`upgrade head`, `downgrade base`, `upgrade head`) e [`scripts/verificar_pks.sql`](../scripts/verificar_pks.sql): última execução na CI do commit `99cc552`. Os commits da rodada 4 aguardam a CI.
 - Setup do zero só pelo [`README.md`](../README.md), num clone limpo, passou em 2026-11-20. A repetição fica com o desenvolvedor, na máquina local dele, e não é pendência do agente.
 - pylint, black e isort passam e reprovam a CI quando falham.
-- Prova por mutação dos testes de isolamento do serviço (`tests/isolation/test_servico_isolamento.py`): rodando sem RLS e sem o filtro explícito de tenant, os 7 testes que provam isolamento falham. A mutação foi rodada à mão e não faz parte da suíte. A segunda barreira (filtro explícito) da verificação de duplicata da fila tem teste próprio, `test_sem_rls_o_filtro_de_tenant_separa_colisao_de_duplicata` em [`test_dedupe_mensagens.py`](../tests/concurrency/test_dedupe_mensagens.py), que roda sem RLS pela conta de administração. A do serviço e a de `concluir_job` continuam sem teste próprio, porque com o RLS ativo elas não mudam o resultado.
-- Prova por mutação da 5.4, também à mão: sem RLS e sem o filtro da abertura, os 2 testes de isolamento do handoff falham. Sem o tratamento de `ErroPermanente`, os testes do worker falham. Com a FK de `mensagem_id` sem a lista de colunas no `SET NULL`, a exclusão da mensagem falha por NOT NULL em `tenant_id`.
-- Critério de pronto da etapa 5: cada função de `app/agenda/regras.py` tem teste unitário com casos de borda (no limite, 1 segundo abaixo, coluna nula, adjacentes, último dia permitido), e `test_handoff_gravado_aparece_no_banco_com_destino_previsto` lê o handoff gravado pela conta `app_clinicas`.
+- Prova por mutação da etapa 5, à mão e fora da suíte: sem RLS e sem o filtro explícito de tenant, os testes de isolamento do serviço e do handoff falham, o que confirma as duas barreiras. A segunda barreira da verificação de duplicata da fila tem teste próprio, `test_sem_rls_o_filtro_de_tenant_separa_colisao_de_duplicata` em [`test_dedupe_mensagens.py`](../tests/concurrency/test_dedupe_mensagens.py), que roda sem RLS pela conta de administração. Sem o tratamento de `ErroPermanente`, os testes do worker falham.
+- Critério de pronto da etapa 5 conferido: cada função de `app/agenda/regras.py` tem teste unitário com casos de borda, e o handoff gravado aparece no banco pela leitura da conta `app_clinicas`.
 
 O que o código garante hoje, com a decisão de cada ponto:
 
@@ -48,16 +49,6 @@ O que o código garante hoje, com a decisão de cada ponto:
 - Senhas das roles aplicadas por script, sem passo manual ([ADR 0006](./decisions/0006-provisionamento-de-roles.md)).
 
 ## Pendências
-
-**Decisões recentes**
-
-- 2026-11-24, passo 0 da etapa 6: SDK `anthropic==2.14.0`, na versão `2026-10-21` da API, com `max_retries=0`. O FastAPI passou para 0.108.0, pelo `anyio>=4.1` que o SDK exige. O modelo vem de `LLM_MODEL`, validada só na criação do cliente, e a chamada real tem o marcador `llm_real`, fora da CI. Contrato do `LLMClient` e hierarquia de erros no [ADR 0010](./decisions/0010-llmclient.md).
-- 2026-11-24, item C7 da [rodada 4](./diagnosticos/2026-11-24-rodada4.md): na remarcação, um novo início que coincide com outro agendamento ativo do mesmo contato levanta `AgendamentoDuplicado`, e o antigo continua ativo. A criação comum continua devolvendo o existente no pedido repetido. Registro na seção 7 da [arquitetura](./arquitetura.md).
-- 2026-11-24, tarefa 5.4: `notificado_para` e `notificado_canal` gravam o destino previsto, e `notificado_em` confirma o envio. `handoffs` ganha `texto_paciente`, `responder_ate`, `agendamento_id` e `mensagem_id`, com FKs compostas e `ON DELETE SET NULL (mensagem_id)` para a exclusão do titular. `ConfiguracaoInvalida` vira handoff `configuracao_invalida`. Registro na revisão do [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md). A conduta depois de mensagem morta não se aplica à 5.4, porque ela não muda o estado da conversa, e o prazo continua na etapa 9.
-- 2026-11-23, tarefa 5.3: a ordem das regras passa a ser antecedência, expediente, duplicidade e conflito. O contato que pede um horário sobreposto ao que ele já tem recebe `AgendamentoDuplicado`, mesmo com o mesmo profissional. Registro na seção 7 da [arquitetura](./arquitetura.md).
-- 2026-11-23, tarefa 5.3: o pedido repetido (mesmo profissional e início) devolve o agendamento existente, na verificação prévia e no `23P01`. O provider responde a disponibilidade só por expediente e ocupação, e a antecedência é aplicada pelo serviço. O passo da disponibilidade é a duração a partir do início da faixa, sem horários quebrados. Remarcar fora da janela segue a regra de cancelamento do antigo. Registro na seção 7 da [arquitetura](./arquitetura.md) e no [ADR 0004](./decisions/0004-conflito-de-horario.md).
-- 2026-11-23, tarefa 5.2: duplicidade é o mesmo contato com agendamento ativo sobreposto, com qualquer profissional, sem constraint, porque a ordem por conversa serializa os pedidos do mesmo contato (com a ressalva para entradas futuras fora da fila). Coluna nula em `regras_agendamento` desliga a regra, e cadastro ausente é `ConfiguracaoInvalida`, fora de `RegraViolada`. A disponibilidade (C3) entra na 5.3. Registro na seção 7 da [arquitetura](./arquitetura.md).
-- Q-21 a Q-24 da seção 13 da [arquitetura](./arquitetura.md) resolvidas pelo [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md): duração por profissional, fuso por clínica, política de cancelamento fora da janela e registro de quem foi notificado no handoff. Consultórios de um profissional só passam a ser previstos, sem presumir recepção.
 
 **Previstas para etapas futuras**
 
@@ -95,7 +86,7 @@ O que o código garante hoje, com a decisão de cada ponto:
 - [`estudo.md`](./estudo.md): escopo, premissas e orçamento do estudo
 - [`arquitetura.md`](./arquitetura.md): decisões técnicas, modelo de dados e questões em aberto
 - [`principios.md`](./principios.md): princípios e como são verificados
-- [`decisions/README.md`](./decisions/README.md): ADRs 0001 a 0009
+- [`decisions/README.md`](./decisions/README.md): ADRs 0001 a 0010
 - [`fake_clinic/clinica.md`](./fake_clinic/clinica.md), [`fake_clinic/FAQ.md`](./fake_clinic/FAQ.md) e [`fake_clinic/pergs_bloqueadas.md`](./fake_clinic/pergs_bloqueadas.md): base fictícia (clínica com equipe e recepção)
 - [`fake_clinic/consultorio_solo.md`](./fake_clinic/consultorio_solo.md): segundo tenant fictício, consultório de um profissional só, sem recepção, para testar as regras da etapa 5 nos dois cenários
 - [`diagnosticos/2026-11-24-rodada4.md`](./diagnosticos/2026-11-24-rodada4.md): diagnóstico da rodada 4, inspeção de 2026-11-24
