@@ -4,6 +4,7 @@ O worker sob teste conecta como worker_jobs (via WORKER_DATABASE_URL, dentro de
 app/jobs/worker.py). Os dados de teste sao criados e removidos com a conta de
 administracao (cnotini). Criterios 1 a 8 da especificacao da tarefa 3.3.
 """
+import dataclasses
 import itertools
 import uuid
 from datetime import timedelta
@@ -267,6 +268,32 @@ def test_worker_com_locked_by_diferente_nao_finaliza(tenant):
     estado = _estado(job_id)
     assert estado.status == "processing"
     assert estado.locked_by == "outro-worker"
+
+
+def test_finalizar_job_com_tenant_trocado_nao_altera_o_job(dois_tenants):
+    """B23: o filtro tenant_id da UPDATE de finalizar_job e barreira propria.
+
+    worker_jobs tem BYPASSRLS, entao so o filtro explicito impede que um JobCapturado
+    com tenant_id errado finalize o job. Id, locked_by e status batem, so o tenant
+    difere, e o atraso definido tentaria mexer em run_at.
+    """
+    tenant_a, tenant_b = dois_tenants
+    job_id = _inserir_job(tenant_a)
+    job = reivindicar_job(WID)
+    assert job is not None and job.id == job_id
+    run_at_antes = _run_at(job_id)
+
+    job_trocado = dataclasses.replace(job, tenant_id=tenant_b)
+    linhas = finalizar_job(
+        job_trocado, WID, "pending", "erro", atraso=timedelta(seconds=60)
+    )
+
+    assert linhas == 0
+    estado = _estado(job_id)
+    assert estado.status == "processing"
+    assert estado.locked_by == WID
+    assert estado.last_error is None
+    assert _run_at(job_id) == run_at_antes
 
 
 class _EngineQueFalha:

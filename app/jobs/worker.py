@@ -23,9 +23,9 @@ capturado se nao houver outro job pending ou processing, mais antigo, da mesma
 conversa (tenant_id, contato_telefone). Jobs sem conversa ficam fora da regra.
 
 Backoff no retry (tarefa 6.4): uma falha transitoria devolve o job a pending com
-run_at adiado por atraso_backoff, exponencial com teto. Sem isso, o retry seria
-imediato e, com a chamada de IA no processamento (etapa 7), geraria rajada de
-custo. O erro permanente (dead) e o sucesso (done) nao mexem em run_at. A
+run_at adiado por atraso_backoff, exponencial com teto (formula e valores no
+ADR 0010). Sem isso, o retry seria imediato e, com a chamada de IA no
+processamento (etapa 7), geraria rajada de custo. O erro permanente (dead) e o sucesso (done) nao mexem em run_at. A
 conversa inteira espera durante o backoff, pela ordem por conversa
 (docs/decisions/0005-ordem-por-conversa.md).
 
