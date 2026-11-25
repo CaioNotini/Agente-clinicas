@@ -1,7 +1,7 @@
 ```
 Papel: registra o lock de transação da agenda de cada profissional, que serializa as gravações de agendamento e evita o deadlock na constraint de exclusão.
 Entrada: docs/status.md
-Relaciona-se com: 0004-conflito-de-horario.md, 0005-ordem-por-conversa.md, 0010-llmclient.md, ../arquitetura.md (seção 7), ../diagnosticos/2026-11-25-instabilidade-concorrencia.md, ../../app/agenda/agenda_propria.py, ../../app/agenda/servico.py, ../../tests/concurrency/test_servico_concorrencia.py, ../../tests/integration/test_agenda_propria.py, ../../tests/isolation/test_isolation_rls.py
+Relaciona-se com: 0004-conflito-de-horario.md, 0005-ordem-por-conversa.md, 0010-llmclient.md, ../arquitetura.md (seção 7), ../diagnosticos/2026-11-25-instabilidade-concorrencia.md, ../../app/agenda/agenda_propria.py, ../../app/agenda/servico.py, ../../tests/concurrency/test_servico_concorrencia.py, ../../tests/integration/test_agenda_propria.py, ../../tests/isolation/test_isolation_rls.py, ../../tests/integration/test_servico_agendamento.py
 ```
 
 # 0011: Lock de agenda por profissional
@@ -51,7 +51,7 @@ O lock fica em `AgendaPropria.criar` ([`agenda_propria.py`](../../app/agenda/age
 
 1. **Mais de um profissional numa operação.** Hoje toda gravação trava um profissional só, porque a remarcação mantém o mesmo profissional. Quem implementar uma operação que grave em mais de um profissional, como a remarcação com troca de profissional, trava todos na mesma transação em ordem crescente de `profissional_id`. Ordens diferentes entre duas transações criariam um deadlock novo.
 2. **Nada lento entre o lock e o commit.** O lock é pego logo antes do INSERT e fica até o commit. Nenhuma chamada ao LLM pode acontecer depois do INSERT e antes do commit, porque a agenda do profissional ficaria parada durante a chamada (até 60 s, pelo [ADR 0010](./0010-llmclient.md)), e as outras gravações passariam do `lock_timeout` de 5 s. Na etapa 7, o texto de resposta é gerado antes da gravação ou depois do commit.
-3. **Outros caminhos de gravação.** O lock fica no único INSERT em `agendamentos`, então todo caminho que grave pelo `AgendaProvider`, como o painel (etapa 14), passa por ele. Um `AgendaProvider` externo (D-17) precisa de uma serialização equivalente do seu lado, ou de pegar este mesmo lock antes de gravar.
+3. **Outros caminhos de gravação.** O lock fica no único INSERT em `agendamentos`, então todo caminho que grave pelo `AgendaProvider`, como o painel (etapa 14), passa por ele. Um `AgendaProvider` externo (D-17) precisa de uma serialização equivalente do seu lado, ou de pegar este mesmo lock antes de gravar. Uma remarcação futura que mova a linha com UPDATE de `inicio` e `fim`, em vez de cancelar e criar, também precisa pegar o lock antes do UPDATE, porque não passaria pelo INSERT.
 4. **Segunda barreira.** Um `40P01` que sobrar depois das tentativas, ou um `55P03` porque a espera pelo lock passou do `lock_timeout`, vira `ConcorrenciaNaAgenda` ([`regras.py`](../../app/agenda/regras.py)). O erro é transitório, não herda de `ErroPermanente`, e o job tenta de novo com backoff. A mensagem não repete o texto do erro do banco. Nenhum erro cru do banco chega ao chamador, como pede o ADR 0004.
 
 ### Lock e SAVEPOINT
@@ -69,12 +69,17 @@ O lock troca um comportamento que dependia de sorte por um determinístico: as g
 
 - Gravações concorrentes no mesmo profissional deixaram de produzir deadlock. Validação em 2026-11-25, com processo novo a cada execução: 4 contatos criando no mesmo horário, 20 de 20 sem `40P01`, com exatamente 1 aceito e 3 `HorarioIndisponivel`. O mesmo para 4 contatos remarcando para o mesmo horário, 20 de 20, com as 3 consultas antigas dos perdedores ainda agendadas.
 - Os testes de criação e de remarcação concorrentes soltam as 4 threads juntas logo antes do lock e do INSERT, por um `AgendaProvider` de teste injetado pelo parâmetro `agenda`. Uma largada no início da operação deixava as threads chegarem espalhadas ao INSERT.
-- Prova por mutação, sem o lock, 20 execuções de cada com processo novo, em 2026-11-25:
-  - **Criação:** falhou em 15 de 20, com 163 deadlocks no log do Postgres. A falha chegou como `ConcorrenciaNaAgenda`, e não como erro cru. O teste de criação é o detector da falta do lock.
-  - **Remarcação:** passou 20 de 20. O log não teve nenhum deadlock entre os contatos da remarcação, e sim 123 conflitos `23P01` limpos. A disputa aconteceu, mas nesse caminho terminou sempre em `23P01`. A causa não foi determinada. A diferença visível é que a remarcação faz o INSERT num SAVEPOINT dentro de outro, depois do UPDATE que cancela a consulta antiga. Isso é hipótese, não foi testado. O resultado é empírico e não é garantia: a remarcação grava pelo mesmo `AgendaPropria.criar` e continua sob o lock.
+- A falta do lock é detectada pela presença dele, na criação e na remarcação. Os testes `test_criar_segura_o_lock_da_agenda_ate_o_commit` ([`test_agenda_propria.py`](../../tests/integration/test_agenda_propria.py)) e `test_remarcar_pega_o_lock_da_agenda_ate_o_commit` ([`test_servico_agendamento.py`](../../tests/integration/test_servico_agendamento.py)) conferem, de outra conexão, que o lock da agenda do profissional está concedido antes do commit, com o tenant na chave, e some depois dele. Prova por mutação em 2026-11-25: sem o lock em `AgendaPropria.criar`, os dois falham. Uma remarcação que mova a linha antiga com UPDATE, sem passar por `AgendaPropria.criar`, também derruba o teste da remarcação.
+- Prova por mutação pela ausência de deadlock, sem o lock, 20 execuções de cada com processo novo, em 2026-11-25:
+  - **Criação:** falhou em 15 de 20, com 163 deadlocks no log do Postgres. A falha chegou como `ConcorrenciaNaAgenda`, e não como erro cru.
+  - **Remarcação:** passou 20 de 20, sem nenhum deadlock no log e com 123 conflitos `23P01` limpos. Por isso, na remarcação, só o teste de presença detecta a falta do lock. Ver a pergunta em aberto abaixo.
 - O pior caso de uma gravação nos testes passa a incluir a espera pelo lock ([`prazos.py`](../../tests/concurrency/prazos.py)).
 - `test_conflito_agendamento.py` passou a aceitar só o `23P01` como rejeição.
 - A restrição 2 vale para a tarefa 7.2 e está registrada no [`status.md`](../status.md).
+
+## Pergunta em aberto
+
+Por que a remarcação concorrente não sofre deadlock sem o lock? Com as 4 threads soltas juntas logo antes do INSERT, a disputa aconteceu (123 conflitos `23P01` no log), mas nenhum deadlock, enquanto a criação no mesmo cenário teve 163. A diferença visível é que a remarcação faz o INSERT num SAVEPOINT dentro de outro, depois do UPDATE que cancela a consulta antiga. Essa hipótese não foi testada. O resultado é empírico e não é garantia, e a remarcação continua sob o lock. Não há tarefa aberta para investigar.
 
 ## Status
 

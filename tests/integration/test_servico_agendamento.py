@@ -37,6 +37,7 @@ from tests.cenarios_etapa5 import (
     mensagem,
     semear,
 )
+from tests.integration.test_agenda_propria import _locks_da_agenda
 
 UTC = timezone.utc
 CONTATO = "(00) 90000-0501"
@@ -477,6 +478,27 @@ def test_remarcar_dentro_da_janela(cenarios):
     assert linhas[antigo.id].cancelado_fora_da_janela is False
     assert linhas[resultado.novo.id].status == "agendado"
 
+
+
+def test_remarcar_pega_o_lock_da_agenda_ate_o_commit(cenarios):
+    """A remarcacao grava sob o lock da agenda do profissional (ADR 0011).
+
+    Prova pela presenca do lock, e nao pela ausencia de deadlock: a disputa na
+    remarcacao nao gerou deadlock nem sem o lock, entao so assim o teste detecta uma
+    remarcacao que grave sem passar por ele.
+    """
+    equipe = cenarios["equipe"]
+    antigo = _criar(equipe, CONTATO, T_EQUIPE_LONGE)
+    assert _locks_da_agenda(equipe["prof"], tenant=equipe["tenant"]) == 0
+
+    with conversa_travada(equipe["tenant"], CONTATO) as travada:
+        resultado = servico.remarcar(
+            travada, antigo.id, novo_inicio=T_EQUIPE_LONGE + timedelta(hours=1), agora=AGORA
+        )
+        assert resultado.situacao == servico.REMARCADO
+        assert _locks_da_agenda(equipe["prof"], tenant=equipe["tenant"]) == 1
+
+    assert _locks_da_agenda(equipe["prof"], tenant=equipe["tenant"]) == 0
 
 def test_remarcar_fora_da_janela_com_handoff_nao_muda_nada(cenarios):
     equipe = cenarios["equipe"]
