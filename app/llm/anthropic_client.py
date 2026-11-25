@@ -14,7 +14,12 @@ import structlog
 from anthropic import APIConnectionError, APIError, APIStatusError
 
 from app.llm.base import ChamadaFerramenta, ConfigLLM, LLMClient, RespostaLLM
-from app.llm.erros import ErroLLM, ErroLLMPermanente, ErroLLMTransitorio
+from app.llm.erros import (
+    ErroLLM,
+    ErroLLMPermanente,
+    ErroLLMTransitorio,
+    EsquemaSaidaNaoSuportado,
+)
 
 log_estruturado = structlog.get_logger(__name__)
 
@@ -69,6 +74,12 @@ class AnthropicClient(LLMClient):
         ferramentas=None,
         esquema_saida=None,
     ) -> RespostaLLM:
+        # Ate a 7.2 o esquema nao e enviado a API. Aceita-lo em silencio devolveria
+        # texto livre a quem espera saida estruturada (C12 da rodada 5).
+        if esquema_saida is not None:
+            raise EsquemaSaidaNaoSuportado(
+                "esquema_saida ainda nao suportado pelo AnthropicClient (tarefa 7.2)"
+            )
         inicio = time.perf_counter()
         try:
             resposta = self._sdk.messages.create(

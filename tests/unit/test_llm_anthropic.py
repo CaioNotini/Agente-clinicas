@@ -12,12 +12,18 @@ from anthropic import (
     APITimeoutError,
     BadRequestError,
 )
+from structlog.testing import capture_logs
 
 from app.core.erros import ErroPermanente
 from app.llm import anthropic_client
 from app.llm.anthropic_client import AnthropicClient, traduzir_erro
 from app.llm.base import ConfigLLM
-from app.llm.erros import ErroLLM, ErroLLMPermanente, ErroLLMTransitorio
+from app.llm.erros import (
+    ErroLLM,
+    ErroLLMPermanente,
+    ErroLLMTransitorio,
+    EsquemaSaidaNaoSuportado,
+)
 
 # --- dubles do SDK ---------------------------------------------------------
 
@@ -226,3 +232,45 @@ def test_erro_do_sdk_na_chamada_e_traduzido():
     cliente = AnthropicClient(_SdkFalso(erro=_erro_status(503)), _CONFIG)
     with pytest.raises(ErroLLMTransitorio):
         cliente.completar(tenant_id="t_1", system="s", mensagens=[])
+
+
+# --- esquema_saida (C12, ate a tarefa 7.2) ---------------------------------
+
+
+@pytest.mark.parametrize("esquema", [{"type": "object"}, {}])
+def test_esquema_saida_levanta_erro_permanente_sem_chamar_o_sdk(esquema):
+    sdk = _SdkFalso(resposta=_Mensagem([_BlocoTexto("nao deveria chegar aqui")]))
+    cliente = AnthropicClient(sdk, _CONFIG)
+
+    with capture_logs() as logs:
+        with pytest.raises(EsquemaSaidaNaoSuportado) as exc:
+            cliente.completar(
+                tenant_id="t_1",
+                system="s",
+                mensagens=[{"role": "user", "content": "oi"}],
+                esquema_saida=esquema,
+            )
+
+    # ErroPermanente leva o job a dead na primeira falha, sem gastar tentativas
+    assert isinstance(exc.value, ErroPermanente)
+    assert isinstance(exc.value, ErroLLMPermanente)
+    assert sdk.chamada is None
+    assert not [log for log in logs if log["event"].startswith("llm_")]
+
+
+def test_sem_esquema_saida_chama_o_sdk_como_antes():
+    sdk = _SdkFalso(resposta=_Mensagem([_BlocoTexto("ok")]))
+    cliente = AnthropicClient(sdk, _CONFIG)
+
+    resp = cliente.completar(
+        tenant_id="t_1", system="s", mensagens=[{"role": "user", "content": "oi"}]
+    )
+
+    assert resp.texto == "ok"
+    assert sdk.chamada == {
+        "model": "claude-haiku",
+        "max_tokens": 1024,
+        "system": "s",
+        "messages": [{"role": "user", "content": "oi"}],
+        "tools": [],
+    }

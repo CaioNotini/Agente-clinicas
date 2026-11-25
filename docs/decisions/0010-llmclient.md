@@ -41,7 +41,7 @@ Os argumentos sao keyword-only para nenhum call site trocar a ordem sem perceber
 - `system`: texto do prompt de sistema.
 - `mensagens`: lista de mensagens no formato do projeto, cada uma com papel e conteúdo.
 - `ferramentas`: definições de ferramentas, opcional.
-- `esquema_saida`: esquema JSON da saída estruturada, opcional.
+- `esquema_saida`: esquema JSON da saída estruturada, opcional. A implementação real entra na tarefa 7.2. Até lá, o `AnthropicClient` levanta `EsquemaSaidaNaoSuportado` quando ele vem preenchido (`is not None`, inclusive `{}`), sem chamar o SDK. Aceitá-lo em silêncio devolveria texto livre a quem espera saída estruturada (C12 da [rodada 5](../diagnosticos/2026-11-25-rodada5.md)).
 
 A resposta normalizada `RespostaLLM` tem:
 
@@ -71,6 +71,7 @@ O `AnthropicClient` traduz os erros do SDK para uma hierarquia própria:
 | Base dos erros de LLM | Raiz da hierarquia | Não é levantada sozinha |
 | Erro transitório | Conexão, timeout, 408, 409, 429, 5xx e 529 | Volta para `pending` com o backoff da tarefa 6.4 |
 | Erro permanente, subclasse de `ErroPermanente` ([`erros.py`](../../app/core/erros.py)) | 400, 401, 403, 404 e 422 | Vai direto para `dead`, sem nova tentativa |
+| `EsquemaSaidaNaoSuportado`, subclasse do erro permanente | `esquema_saida` preenchido antes da tarefa 7.2. É erro de programação, sem chamada à API | Vai direto para `dead`, sem gastar as tentativas |
 
 A mensagem do erro leva só o tipo, o status HTTP e o id da requisição. O texto do erro do provedor (`str(e)`) não entra, porque pode repetir dados da requisição, e o worker grava a mensagem em `jobs.last_error`. O mapeamento completo e os testes de cada status ficam na tarefa 6.2.
 

@@ -9,6 +9,9 @@ a diferenca entre transitorio e permanente:
 - ErroLLMPermanente: 400, 401, 403, 404, 422 e demais erros de contrato. Nao muda
   entre tentativas. Herda de ErroPermanente para cair no except ErroPermanente do
   worker, que manda o job direto para dead (tarefa 5.4).
+- EsquemaSaidaNaoSuportado: esquema_saida veio preenchido antes de a saida
+  estruturada existir (tarefa 7.2). E erro de programacao, entao vai para dead na
+  primeira falha em vez de gastar as tentativas.
 
 A lista de transitorios espelha o _should_retry do SDK anthropic 2.14.0 (408, 409,
 429 e >= 500): com max_retries=0, o job e a unica camada de nova tentativa.
@@ -26,3 +29,7 @@ class ErroLLMTransitorio(ErroLLM):
 
 class ErroLLMPermanente(ErroLLM, ErroPermanente):
     """Falha que se repetiria igual: contrato, autenticacao ou pedido invalido."""
+
+
+class EsquemaSaidaNaoSuportado(ErroLLMPermanente):
+    """esquema_saida foi passado, mas o AnthropicClient ainda nao o envia (tarefa 7.2)."""

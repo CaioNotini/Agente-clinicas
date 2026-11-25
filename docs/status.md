@@ -55,6 +55,7 @@ O que o código garante hoje, com a decisão de cada ponto:
 **Previstas para etapas futuras**
 
 - 7.3: `MENSAGEM_URGENCIA` em [`fixas.py`](../app/mensagens/fixas.py) ainda não cita o CVV (188), decidido na seção 8.3 da [arquitetura](./arquitetura.md#83-escopo-clínico).
+- 7.2: implementar a saída estruturada no `AnthropicClient` e remover `EsquemaSaidaNaoSuportado`. Hoje `esquema_saida` preenchido levanta esse erro, que leva o job a `dead` ([ADR 0010](./decisions/0010-llmclient.md)).
 - 7.2: chamar `criar_cliente_llm` no `main()` do worker e injetar o cliente no processamento ([ADR 0010](./decisions/0010-llmclient.md)). Hoje a função existe, mas nada a chama.
 - 9: o timeout do LLM é por chamada. Um job com várias chamadas (classificação e function calling) pode somar mais que os 300 s do limite de órfão ([ADR 0010](./decisions/0010-llmclient.md)).
 - 8: o [`FAQ.md`](./fake_clinic/FAQ.md) não tem mais entradas clínicas. O critério "trechos marcados como bloqueado nunca são retornados" vai precisar de um trecho clínico de teste criado na própria etapa 8.
