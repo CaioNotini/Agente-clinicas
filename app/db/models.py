@@ -194,7 +194,6 @@ class Conversa(Base):
     # Estados de app/core/estados.py e do ADR 0003
     estado_conversa = Column(String(30), nullable=False, server_default=text("'idle'"))
     human_mode = Column(Boolean, nullable=False, server_default=text("false"))
-    historico = Column(JSON)
     criada_em = Column(DateTime, server_default=func.now())
     atualizada_em = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

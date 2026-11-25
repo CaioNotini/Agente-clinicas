@@ -51,6 +51,10 @@ O que o código garante hoje, com a decisão de cada ponto:
 - Erro permanente (`ConfiguracaoInvalida`, `MisturaDeTenants`) leva o job a `dead` na primeira falha, com log estruturado de erro. O texto de exceções não vai ao paciente (seções 7 e 8.1 da [arquitetura](./arquitetura.md)).
 - Senhas das roles aplicadas por script, sem passo manual ([ADR 0006](./decisions/0006-provisionamento-de-roles.md)).
 
+## Decisões recentes
+
+- 2026-11-25, C6: a coluna `conversas.historico` foi removida (migration `a5587f532a88`, com downgrade que a recria). Ela nunca foi lida nem escrita. O contexto do LLM da etapa 7 virá das últimas mensagens do contato, direto de `mensagens` (`contato_telefone`, `conteudo`, `direcao`, `criada_em` por tenant). Manter `historico` duplicaria o dado, com risco de divergência e mais um ponto a apagar na exclusão do titular (LGPD). Um resumo de conversas longas, se preciso na etapa 7, será coluna nova com contrato e ADR.
+
 ## Pendências
 
 **Previstas para etapas futuras**
@@ -74,7 +78,7 @@ O que o código garante hoje, com a decisão de cada ponto:
 - 10: persistir tokens, latência e modelo de cada chamada ao LLM numa tabela, com policy, `TABELAS_TENANT` e testes de isolamento. Na etapa 6 eles vão só ao log estruturado ([ADR 0010](./decisions/0010-llmclient.md)).
 - 12: índices das colunas filhas das FKs, índice parcial da fila e retenção de jobs (C1 e C5).
 - 12: teste de UPDATE que move uma linha própria para outra clínica (`SET tenant_id`), recusado pelo WITH CHECK da policy (C9 da rodada 4).
-- 6: destino de `conversas.historico` (C6).
+- 7: montar o contexto do LLM com as últimas N mensagens do contato, direto de `mensagens`, e avaliar o índice `(tenant_id, contato_telefone, criada_em)` em `mensagens` (substitui o C6, resolvido em 2026-11-25 com a remoção de `conversas.historico`).
 - 17: derivar o `tenant_id` do número de destino no webhook (A7), e envio de WhatsApp como job novo, com idempotência no provedor (ADR 0008).
 - 15: `ON DELETE SET NULL (mensagem_id)` exige Postgres 15 ou mais. Conferir a versão do Supabase na tarefa 15.2 (C11 da rodada 4).
 
