@@ -22,8 +22,12 @@ Ordem por conversa (docs/decisions/0005-ordem-por-conversa.md): um job so e
 capturado se nao houver outro job pending ou processing, mais antigo, da mesma
 conversa (tenant_id, contato_telefone). Jobs sem conversa ficam fora da regra.
 
-Pendencia da etapa 6: nao ha backoff. No retry, run_at fica inalterado, entao o
-job volta a ficar elegivel imediatamente.
+Backoff no retry (tarefa 6.4): uma falha transitoria devolve o job a pending com
+run_at adiado por atraso_backoff, exponencial com teto. Sem isso, o retry seria
+imediato e, com a chamada de IA no processamento (etapa 7), geraria rajada de
+custo. O erro permanente (dead) e o sucesso (done) nao mexem em run_at. A
+conversa inteira espera durante o backoff, pela ordem por conversa
+(docs/decisions/0005-ordem-por-conversa.md).
 
 Erro permanente (app/core/erros.py, tarefa 5.4): o job vai para dead na primeira
 falha, sem gastar as outras tentativas, e gera log de erro com tenant_id, job_id e
@@ -33,6 +37,7 @@ import logging
 import time
 import uuid
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Callable, Optional
 
 import structlog
@@ -61,6 +66,12 @@ TIPOS_SUPORTADOS = ("PROCESS_INBOUND_MESSAGE",)
 # Espera depois de um erro de banco no laco, antes de tentar de novo
 INTERVALO_ERRO_SEGUNDOS = 5.0
 
+# Backoff do retry transitorio (tarefa 6.4). O atraso dobra a cada tentativa, ate
+# o teto. Retry imediato, com a chamada de IA no processamento, geraria rajada de
+# custo. Com max_attempts=3, so ha atraso na 1a falha (base) e na 2a (2 * base).
+BACKOFF_BASE_SEGUNDOS = 60
+BACKOFF_TETO_SEGUNDOS = 1800
+
 logger = logging.getLogger(__name__)
 # Log estruturado do erro permanente: e problema nosso, e alguem precisa ser avisado
 log_estruturado = structlog.get_logger(__name__)
@@ -81,6 +92,16 @@ class JobCapturado:
 def processamento_vazio(conexao, job: JobCapturado) -> None:
     """Processamento que nao faz nada. Padrao de processar_um."""
     return None
+
+
+def atraso_backoff(tentativas: int) -> timedelta:
+    """Atraso ate a proxima tentativa: exponencial com teto.
+
+    min(base * 2**(tentativas-1), teto). tentativas e o numero de tentativas ja
+    gastas (job.attempts), entao a 1a falha usa 2**0 = base.
+    """
+    segundos = min(BACKOFF_BASE_SEGUNDOS * 2 ** (tentativas - 1), BACKOFF_TETO_SEGUNDOS)
+    return timedelta(seconds=segundos)
 
 
 def reivindicar_job(
@@ -152,27 +173,36 @@ def finalizar_job(
     status: str,
     last_error: Optional[str] = None,
     engine=engine_worker,
+    atraso: Optional[timedelta] = None,
 ) -> int:
     """Grava o status final do job, so se ele ainda pertencer a este worker.
 
     O filtro por id, tenant_id e locked_by garante que um worker que perdeu o
     lock (job recapturado por outro) nao finaliza o job alheio. Retorna o numero
     de linhas afetadas.
+
+    Com atraso (retry transitorio, tarefa 6.4), a UPDATE adia run_at para
+    now() + atraso, espacando a proxima captura. Sem atraso, run_at fica
+    inalterado, entao dead e done nao mexem no instante de execucao.
     """
+    set_run_at = ", run_at = now() + make_interval(secs => :secs)" if atraso else ""
+    parametros = {
+        "s": status,
+        "e": last_error,
+        "id": job.id,
+        "t": job.tenant_id,
+        "w": worker_id,
+    }
+    if atraso:
+        parametros["secs"] = atraso.total_seconds()
     with engine.begin() as conexao:
         resultado = conexao.execute(
             text(
-                "UPDATE jobs SET status = :s, last_error = :e "
+                f"UPDATE jobs SET status = :s, last_error = :e{set_run_at} "
                 "WHERE id = :id AND tenant_id = :t AND locked_by = :w "
                 "AND status = 'processing'"
             ),
-            {
-                "s": status,
-                "e": last_error,
-                "id": job.id,
-                "t": job.tenant_id,
-                "w": worker_id,
-            },
+            parametros,
         )
         return resultado.rowcount
 
@@ -232,9 +262,11 @@ def processar_um(
         finalizar_job(job, worker_id, "dead", _resumo_erro(erro), engine)
         return job
     except Exception as erro:  # noqa: BLE001 - qualquer falha de processamento
-        # Falha: volta a pending ate o teto; atingido max_attempts, vai para dead
+        # Falha: volta a pending ate o teto; atingido max_attempts, vai para dead.
+        # So o retry (pending) adia run_at com backoff; dead nao mexe no instante.
         status = "dead" if job.attempts >= job.max_attempts else "pending"
-        finalizar_job(job, worker_id, status, _resumo_erro(erro), engine)
+        atraso = atraso_backoff(job.attempts) if status == "pending" else None
+        finalizar_job(job, worker_id, status, _resumo_erro(erro), engine, atraso=atraso)
         return job
 
     # So altera o job se ele ainda estiver em processing com este worker. Um

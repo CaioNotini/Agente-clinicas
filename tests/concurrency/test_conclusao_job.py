@@ -204,7 +204,10 @@ def test_worker_que_perdeu_o_job_desfaz_os_efeitos(tenant):
     assert (estado.status, estado.locked_by, estado.attempts) == ("processing", "worker-outro", 1)
 
 
-def test_controle_falha_depois_do_efeito_desfaz_e_segue_o_retry(tenant):
+def test_controle_falha_depois_do_efeito_desfaz_e_segue_o_retry(tenant, monkeypatch):
+    # O teste prova que o efeito e desfeito e o retry segue ate dead, nao o atraso
+    # do backoff (tarefa 6.4). Base 0 deixa o retry imediato entre as chamadas.
+    monkeypatch.setattr(worker, "BACKOFF_BASE_SEGUNDOS", 0)
     job_id = _enfileirar(tenant)
     falha = _processamento_com_efeito(falhar=True)
 

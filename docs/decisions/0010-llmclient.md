@@ -127,6 +127,7 @@ A versão 2.x põe o cliente na versão atual da API desde a primeira linha de c
 - Os pacotes `tokenizers` e `huggingface_hub`, trazidos pelo SDK 0.25.7, deixam de ser instalados.
 - O SDK 2.x está sob a licença Apache 2.0. As versões anteriores eram MIT.
 - O retry do job passa a ser a única nova tentativa de uma chamada de IA. A conversa inteira espera durante o backoff, pela ordem por conversa. Essa consequência é registrada no [ADR 0005](./0005-ordem-por-conversa.md) na tarefa 6.4.
+- O backoff da tarefa 6.4 usa `run_at = now() + min(base * 2 ** (tentativas - 1), teto)`, com `base` de 60 s e `teto` de 1800 s (constantes em [`worker.py`](../../app/jobs/worker.py)). Com `max_attempts = 3`, há atraso só na 1ª falha (60 s) e na 2ª (120 s), e a conversa fica parada cerca de 3 minutos antes de o job ir para `dead`. O teto de 1800 s não vincula nesse caso e só passa a ter efeito se o número de tentativas aumentar. O backoff atua só no retry que volta para `pending`. O caminho de `dead` e o de `done` não mexem no `run_at`.
 - Trocar de modelo é trocar `LLM_MODEL`, sem mudança de código.
 - Um status HTTP que a tabela de erros não lista é decidido na tarefa 6.2, com teste.
 

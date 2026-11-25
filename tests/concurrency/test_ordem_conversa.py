@@ -94,6 +94,15 @@ def _estados(ids):
     return {linha.id: (linha.status, linha.attempts) for linha in linhas}
 
 
+def _mover_run_at_para_o_passado(job_id):
+    """Adianta run_at por SQL, simulando o fim do backoff sem esperar o tempo real."""
+    with engine_admin.begin() as conexao:
+        conexao.execute(
+            text("UPDATE jobs SET run_at = now() - interval '1 minute' WHERE id = :id"),
+            {"id": job_id},
+        )
+
+
 def _em_processing(tenant_id, contato):
     """Quantos jobs da conversa estao em processing agora (lido fora do worker)."""
     with engine_admin.connect() as conexao:
@@ -172,8 +181,11 @@ def test_dois_workers_processamento_lento_respeita_ordem(tenant):
     assert all(estado == ("done", 1) for estado in _estados(ids).values())
 
 
-def test_falha_da_mensagem_1_nao_deixa_a_2_e_a_3_passarem(tenant):
+def test_falha_da_mensagem_1_nao_deixa_a_2_e_a_3_passarem(tenant, monkeypatch):
     """A 1 falha na primeira tentativa: a 2 e a 3 so rodam depois que a 1 conclui."""
+    # O teste prova a ordem, nao o atraso do backoff (tarefa 6.4). Sem backoff o
+    # retry e imediato e cabe no prazo. A regra de ordem olha o status, nao run_at.
+    monkeypatch.setattr("app.jobs.worker.BACKOFF_BASE_SEGUNDOS", 0)
     j1, j2, j3 = ids = [_enfileirar(tenant) for _ in range(3)]
     sucessos = []
     tentativas_j1 = []
@@ -194,8 +206,11 @@ def test_falha_da_mensagem_1_nao_deixa_a_2_e_a_3_passarem(tenant):
     assert _estados(ids) == {j1: ("done", 2), j2: ("done", 1), j3: ("done", 1)}
 
 
-def test_mensagem_que_esgota_tentativas_vai_para_dead_e_libera_as_seguintes(tenant):
+def test_mensagem_que_esgota_tentativas_vai_para_dead_e_libera_as_seguintes(tenant, monkeypatch):
     """A 1 falha sempre: vai para dead apos max_attempts, e so entao a 2 e a 3 rodam, em ordem."""
+    # Ordem sob retry, sem depender do atraso do backoff (tarefa 6.4): base 0 deixa
+    # o retry imediato dentro do prazo. A regra de ordem olha o status, nao run_at.
+    monkeypatch.setattr("app.jobs.worker.BACKOFF_BASE_SEGUNDOS", 0)
     j1, j2, j3 = ids = [_enfileirar(tenant) for _ in range(3)]
     eventos = []
     registro = threading.Lock()
@@ -212,6 +227,36 @@ def test_mensagem_que_esgota_tentativas_vai_para_dead_e_libera_as_seguintes(tena
 
     assert eventos == [j1, j1, j1, j2, j3]
     assert _estados(ids) == {j1: ("dead", 3), j2: ("done", 1), j3: ("done", 1)}
+
+
+def test_backoff_adia_a_1_e_a_2_so_roda_depois_dela(tenant):
+    """Prova a consequencia do backoff no ADR 0005, com o backoff ativo.
+
+    Sem zerar a base e sem sleep. A 1 falha e volta a pending com run_at no
+    futuro. Enquanto isso, a 2 da mesma conversa nao e capturada: a 1 esta adiada
+    e a 2 fica bloqueada pela ordem, porque a regra olha o status e nao o run_at.
+    Movido o run_at da 1 para o passado por SQL, ela volta a ser elegivel e e
+    processada antes da 2.
+    """
+    j1 = _enfileirar(tenant)
+    j2 = _enfileirar(tenant)
+
+    def falha_na_1(conexao, job):
+        if job.id == j1:
+            raise RuntimeError("falha de proposito na 1")
+
+    assert processar_um("w1", processamento=falha_na_1).id == j1
+    assert _estados([j1])[j1] == ("pending", 1)
+
+    # run_at da 1 no futuro (backoff real): nem a 1 (adiada) nem a 2 (bloqueada
+    # pela ordem) sao elegiveis, e a 2 nao gasta tentativa
+    assert reivindicar_job("w2") is None
+    assert _estados([j2])[j2] == ("pending", 0)
+
+    # Adiantado o run_at da 1, ela volta a ser elegivel, antes da 2
+    _mover_run_at_para_o_passado(j1)
+    capturado = reivindicar_job("w3")
+    assert capturado is not None and capturado.id == j1
 
 
 def test_conversa_bloqueada_nao_bloqueia_outras(dois_tenants):

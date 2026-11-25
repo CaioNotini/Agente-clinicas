@@ -6,7 +6,7 @@ Relaciona-se com: etapas.md, estudo.md, arquitetura.md, principios.md, decisions
 
 # Status do projeto
 
-Estado verificado em 2026-11-24. O histórico detalhado de cada mudança fica no git log e nos [ADRs](./decisions/README.md).
+Estado verificado em 2026-11-25. O histórico detalhado de cada mudança fica no git log e nos [ADRs](./decisions/README.md).
 
 ## Onde estamos
 
@@ -14,8 +14,9 @@ Estado verificado em 2026-11-24. O histórico detalhado de cada mudança fica no
 
 Etapa 6, progresso:
 
-- Passo 0 (preparação) concluído: SDK `anthropic==2.14.0`, na versão `2026-10-21` da API, com `max_retries=0`. O FastAPI passou para 0.108.0, pelo `anyio>=4.1` que o SDK exige. O modelo vem de `LLM_MODEL`, validada só na criação do cliente, e a chamada real tem o marcador `llm_real`, fora da CI. Contrato do `LLMClient`, hierarquia de erros e configuração no [ADR 0010](./decisions/0010-llmclient.md). Ainda sem código em `app/llm/`.
-- Pendentes: 6.1 interface `LLMClient`, 6.2 `AnthropicClient` com Claude Haiku, 6.3 registro de tokens e latência no log estruturado, e 6.4 backoff no retry de jobs. Detalhe em [`etapas.md`](./etapas.md).
+- Passo 0 (preparação) concluído: SDK `anthropic==2.14.0`, na versão `2026-10-21` da API, com `max_retries=0`. O FastAPI passou para 0.108.0, pelo `anyio>=4.1` que o SDK exige. O modelo vem de `LLM_MODEL`, validada só na criação do cliente, e a chamada real tem o marcador `llm_real`, fora da CI. Contrato do `LLMClient`, hierarquia de erros e configuração no [ADR 0010](./decisions/0010-llmclient.md).
+- 6.1 a 6.4 concluídas: interface `LLMClient`, dataclasses e configuração do LLM (6.1), `AnthropicClient` com Claude Haiku e a hierarquia de erros (6.2), tokens e latência no log estruturado, nos eventos `llm_chamada` e `llm_chamada_falhou` (6.3), e backoff no retry de jobs, com `base` de 60 s e `teto` de 1800 s, só no retry e nunca no `dead` (6.4). Código em `app/llm/` e [`app/jobs/worker.py`](../app/jobs/worker.py). Evidência: `pytest tests/ -q` = `490 passed`, 1 warning conhecido, em 2026-11-25.
+- Falta para fechar a etapa 6: a chamada real com o marcador `llm_real`, que gera custo e exige aprovação do desenvolvedor na implementação e no teste (regra 22 do CLAUDE.md), e a decisão sobre o destino de `conversas.historico` (C6, nas pendências abaixo).
 
 Etapa 5 (concluída), resumo: agendar, remarcar, cancelar e disponibilidade em código determinístico, com `AgendaProvider` e `AgendaPropria`, regras puras em `app/agenda/regras.py`, serviço em `app/agenda/servico.py` e handoff gravado em `app/handoff/abertura.py` sem mudar o estado da conversa. Blocos reutilizáveis: schema novo, fuso (`app/core/fuso.py`) e mensagens fixas (`app/mensagens/fixas.py`). Decisões em [ADR 0004](./decisions/0004-conflito-de-horario.md), [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md) (Q-21 a Q-24) e seção 7 da [arquitetura](./arquitetura.md). O serviço ainda não é chamado pelo processamento das mensagens. A ligação com o conteúdo da mensagem entra na etapa 7, com a classificação.
 
@@ -28,9 +29,9 @@ Etapa 5 (concluída), resumo: agendar, remarcar, cancelar e disponibilidade em c
 
 ## O que está verificado
 
-Última verificação em 2026-11-24, no banco do Docker local:
+Última verificação em 2026-11-25, no banco do Docker local:
 
-- `pytest tests/ -q`: `448 passed`, no `.venv` e num ambiente limpo instalado do zero pelo `requirements-dev.txt`, depois da limpeza de dependências da rodada 4. Repetido com o SDK `anthropic` 2.14.0 e o FastAPI 0.108.0, no `.venv` e num ambiente limpo: `448 passed`, sem teste com o marcador `llm_real`.
+- `pytest tests/ -q` = `490 passed`, 1 warning conhecido (TestClient do Starlette), sem o marcador `llm_real`, em 2026-11-25, com o código das tarefas 6.1 a 6.4. Antes, em 2026-11-24, a suíte tinha `448 passed` num ambiente limpo instalado do zero pelo `requirements-dev.txt`, repetido com o SDK `anthropic` 2.14.0 e o FastAPI 0.108.0. As tarefas 6.1 a 6.4 somaram testes novos até os `490`.
 - O banco local estava em `45ba5d9bc62d` e foi levado ao head `c3d8e5a1f297` com `alembic upgrade head`. O `alembic check` passou.
 - Ciclo de migrations (`upgrade head`, `downgrade base`, `upgrade head`) e [`scripts/verificar_pks.sql`](../scripts/verificar_pks.sql): última execução na CI do commit `99cc552`. Os commits da rodada 4 aguardam a CI.
 - Setup do zero só pelo [`README.md`](../README.md), num clone limpo, passou em 2026-11-20. A repetição fica com o desenvolvedor, na máquina local dele, e não é pendência do agente.

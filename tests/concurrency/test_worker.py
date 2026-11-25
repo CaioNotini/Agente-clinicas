@@ -6,6 +6,7 @@ administracao (cnotini). Criterios 1 a 8 da especificacao da tarefa 3.3.
 """
 import itertools
 import uuid
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import create_engine, text
@@ -15,6 +16,9 @@ from structlog.testing import capture_logs
 from app.agenda.regras import ConfiguracaoInvalida, MisturaDeTenants
 from app.config import MIGRATION_DATABASE_URL
 from app.jobs.worker import (
+    BACKOFF_BASE_SEGUNDOS,
+    BACKOFF_TETO_SEGUNDOS,
+    atraso_backoff,
     engine_worker,
     finalizar_job,
     processar_um,
@@ -105,6 +109,21 @@ def _estado(job_id):
         ).first()
 
 
+def _run_at(job_id):
+    with engine_admin.connect() as conexao:
+        return conexao.execute(
+            text("SELECT run_at FROM jobs WHERE id = :id"), {"id": job_id}
+        ).scalar()
+
+
+def _zerar_run_at(job_id):
+    """Volta run_at para now(), simulando o tempo de backoff ja decorrido."""
+    with engine_admin.begin() as conexao:
+        conexao.execute(
+            text("UPDATE jobs SET run_at = now() WHERE id = :id"), {"id": job_id}
+        )
+
+
 def test_dois_workers_so_um_processa(tenant):
     """Criterio 1: com a linha travada por uma conexao, o worker captura vazio."""
     job_id = _inserir_job(tenant)
@@ -143,6 +162,10 @@ def test_falha_volta_a_pending_e_depois_dead(tenant):
         assert estado.attempts == attempts_esperado
         assert estado.status == status_esperado
         assert estado.last_error is not None
+        # O retry adia run_at (backoff, tarefa 6.4). Zera para simular o tempo
+        # decorrido e recapturar na proxima iteracao.
+        if status_esperado == "pending":
+            _zerar_run_at(job_id)
 
     # Esgotado: nao e mais capturado
     assert processar_um(WID, processamento=falha) is None
@@ -369,3 +392,62 @@ def test_controle_erro_comum_continua_voltando_a_pending(tenant):
         processar_um(WID, processamento=falha)
     assert (_estado(job_id).status, _estado(job_id).attempts) == ("pending", 1)
     assert [log for log in logs if log["log_level"] == "error"] == []
+
+
+# --- 6.4: backoff no retry transitorio ---
+
+
+def test_atraso_backoff_dobra_e_respeita_o_teto():
+    """Funcao pura: base na 1a falha, dobro na 2a, teto quando estoura."""
+    assert atraso_backoff(1) == timedelta(seconds=BACKOFF_BASE_SEGUNDOS)
+    assert atraso_backoff(2) == timedelta(seconds=2 * BACKOFF_BASE_SEGUNDOS)
+    # Tentativa alta: o valor exponencial passaria do teto e e cortado nele
+    assert atraso_backoff(20) == timedelta(seconds=BACKOFF_TETO_SEGUNDOS)
+
+
+def _run_at_no_futuro(job_id):
+    with engine_admin.connect() as conexao:
+        return conexao.execute(
+            text("SELECT run_at > now() FROM jobs WHERE id = :id"), {"id": job_id}
+        ).scalar()
+
+
+def test_retry_transitorio_adia_run_at_e_job_nao_e_reelegivel(tenant):
+    """Falha transitoria volta a pending com run_at no futuro, entao nao recaptura."""
+    job_id = _inserir_job(tenant)
+
+    def falha(conexao, job):
+        raise RuntimeError("transitorio")
+
+    processar_um(WID, processamento=falha)
+
+    estado = _estado(job_id)
+    assert (estado.status, estado.attempts) == ("pending", 1)
+    assert _run_at_no_futuro(job_id) is True
+    # run_at no futuro: o job nao e reelegivel na hora
+    assert reivindicar_job(WID) is None
+
+
+def test_erro_permanente_vai_para_dead_sem_adiar_run_at(tenant):
+    """O caminho de dead nao mexe em run_at."""
+    job_id = _inserir_job(tenant)
+    run_at_antes = _run_at(job_id)
+
+    def falha(conexao, job):
+        raise ConfiguracaoInvalida("cadastro quebrado")
+
+    processar_um(WID, processamento=falha)
+
+    assert _estado(job_id).status == "dead"
+    assert _run_at(job_id) == run_at_antes
+
+
+def test_sucesso_nao_adia_run_at(tenant):
+    """Done nao mexe em run_at."""
+    job_id = _inserir_job(tenant)
+    run_at_antes = _run_at(job_id)
+
+    job = processar_um(WID, processamento=lambda conexao, job: None)
+
+    assert job is not None and _estado(job_id).status == "done"
+    assert _run_at(job_id) == run_at_antes

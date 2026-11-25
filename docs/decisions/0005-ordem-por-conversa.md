@@ -77,7 +77,7 @@ A regra fica no banco, dentro da mesma consulta de captura que já usa `SKIP LOC
   - Se a escrita da escalada falhar, o job continua `dead` e o erro fica em `last_error`.
 - **Opção 2, escolhida: risco aceito até a etapa 9.** Nada muda na conversa. A mensagem morta fica só em `jobs`. O prazo é a primeira etapa em que o processamento passa a alterar o estado da conversa. Pela ordem de [`etapas.md`](../etapas.md), é a etapa 9, tarefa 9.2, que liga as ferramentas ao motor de estados. A etapa 7 só classifica e audita, a 5.4 grava o handoff sem mudar o estado, e a 13 vem depois da 9. A conduta precisa estar decidida e implementada antes de a etapa 9 fechar. O registro está em [`status.md`](../status.md).
 - O tempo máximo de bloqueio é de `max_attempts` processamentos da mensagem que falha. Se o worker morrer durante o processamento, soma-se o limite de órfão `LIMITE_LOCK_SEGUNDOS`, de 300 s, até o job ser recapturado ou marcado `dead` pela varredura.
-- Enquanto não houver backoff, as novas tentativas são imediatas. Quando o backoff entrar, um `run_at` futuro do job anterior continua bloqueando os seguintes, porque a regra olha o status e não o `run_at`.
+- Desde a tarefa 6.4 as novas tentativas têm backoff. Uma falha transitória adia o `run_at` do job (`atraso_backoff` em [`worker.py`](../../app/jobs/worker.py)), mas um `run_at` futuro do job anterior continua bloqueando os seguintes, porque a regra de ordem olha o status e não o `run_at`. A conversa inteira espera durante o backoff.
 
 **Limites da garantia.**
 

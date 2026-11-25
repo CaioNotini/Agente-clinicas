@@ -267,6 +267,8 @@ As duas travas resolvem problemas diferentes. `SKIP LOCKED` impede que dois work
 
 Um job que falha volta para `pending` até `max_attempts`. A exceção é o erro permanente (`ErroPermanente`, em [`app/core/erros.py`](../app/core/erros.py)), como `ConfiguracaoInvalida` e `MisturaDeTenants`. Uma nova tentativa falharia igual e só atrasaria as mensagens seguintes da conversa. O job vai para `dead` na primeira falha, e o worker registra um log estruturado de erro com `tenant_id`, o id do job e o tipo do erro (tarefa 5.4).
 
+O retry que volta para `pending` tem backoff (tarefa 6.4): o `run_at` do job é adiado por `min(base * 2 ** (tentativas - 1), teto)`, com `base` de 60 s e `teto` de 1800 s. Sem isso, o retry seria imediato e, com a chamada de IA no processamento, geraria rajada de custo. O backoff atua só no retry. O caminho de `dead` e o de `done` não mexem no `run_at`. Pela ordem por conversa do [ADR 0005](./decisions/0005-ordem-por-conversa.md), um `run_at` futuro do job anterior continua bloqueando as mensagens seguintes da conversa, porque a regra de ordem olha o status e não o `run_at`. Os valores e o efeito prático estão no [ADR 0010](./decisions/0010-llmclient.md).
+
 Nas etapas 3 a 5 não há classificação de intenção. A IA entra a partir da etapa 6, por cima do motor de estados que já funciona. A classificação entra na etapa 7, primeiro por regra, como baseline, e depois com LLM. A sequência está em [`etapas.md`](./etapas.md).
 
 ### 8.2 Lembretes
