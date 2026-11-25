@@ -5,6 +5,8 @@ from urllib.parse import quote
 
 from dotenv import load_dotenv
 
+from app.llm.base import ConfigLLM
+
 raiz_projeto = Path(__file__).resolve().parent.parent
 load_dotenv(raiz_projeto / ".env")
 
@@ -44,3 +46,32 @@ MIGRATION_DATABASE_URL = _monta_url(os.getenv("DB_USER"), os.getenv("DB_PASSWORD
 WORKER_DATABASE_URL = _monta_url(
     os.getenv("WORKER_DB_USER"), os.getenv("WORKER_DB_PASSWORD")
 )
+
+# Configuração do cliente LLM (ADR 0010). Lida só quando o cliente é criado, não no
+# import: a suíte do banco e a CI não precisam de LLM_MODEL nem ANTHROPIC_API_KEY, por
+# isso estas variáveis ficam fora de variaveis_obrigatorias.
+variaveis_llm = ["LLM_MODEL", "ANTHROPIC_API_KEY"]
+
+# Padrões do modelo que não vêm do .env. max_tokens limita a resposta do modelo, e o
+# esforço de raciocínio fica desligado (o Haiku do estudo não usa).
+MAX_TOKENS_PADRAO = 1024
+ESFORCO_PADRAO = None
+
+
+def ler_config_llm():
+    """Lê LLM_MODEL e ANTHROPIC_API_KEY e devolve (ConfigLLM, chave).
+
+    Roda só quando o cliente LLM é criado, por isso a validação fica aqui e não no
+    nível do módulo. Levanta RuntimeError listando as variáveis ausentes, no mesmo
+    padrão de variaveis_obrigatorias. A chave não entra na ConfigLLM: vai direto ao
+    SDK como api_key (ADR 0010).
+    """
+    faltando = [nome for nome in variaveis_llm if not os.getenv(nome)]
+    if faltando:
+        raise RuntimeError(f"Variáveis ausentes no .env: {', '.join(faltando)}")
+    config = ConfigLLM(
+        modelo=os.getenv("LLM_MODEL"),
+        max_tokens=MAX_TOKENS_PADRAO,
+        esforco=ESFORCO_PADRAO,
+    )
+    return config, os.getenv("ANTHROPIC_API_KEY")
