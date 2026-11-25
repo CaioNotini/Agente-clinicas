@@ -116,7 +116,9 @@ def test_normaliza_texto_tokens_modelo_e_id():
         uso=(11, 5),
     )
     cliente = AnthropicClient(_SdkFalso(resposta=msg), _CONFIG)
-    resp = cliente.completar(system="s", mensagens=[{"role": "user", "content": "oi"}])
+    resp = cliente.completar(
+        tenant_id="t_1", system="s", mensagens=[{"role": "user", "content": "oi"}]
+    )
     assert resp.texto == "ola mundo"
     assert resp.tokens_entrada == 11
     assert resp.tokens_saida == 5
@@ -132,7 +134,7 @@ def test_normaliza_chamadas_de_ferramenta():
         stop_reason="tool_use",
     )
     cliente = AnthropicClient(_SdkFalso(resposta=msg), _CONFIG)
-    resp = cliente.completar(system="s", mensagens=[])
+    resp = cliente.completar(tenant_id="t_1", system="s", mensagens=[])
     assert len(resp.chamadas_ferramenta) == 1
     chamada = resp.chamadas_ferramenta[0]
     assert chamada.id == "tu_1"
@@ -143,14 +145,14 @@ def test_normaliza_chamadas_de_ferramenta():
 def test_motivo_parada_desconhecido_vai_verbatim_sem_keyerror():
     msg = _Mensagem([_BlocoTexto("x")], stop_reason="motivo_novo_do_provedor")
     cliente = AnthropicClient(_SdkFalso(resposta=msg), _CONFIG)
-    resp = cliente.completar(system="s", mensagens=[])
+    resp = cliente.completar(tenant_id="t_1", system="s", mensagens=[])
     assert resp.motivo_parada == "motivo_novo_do_provedor"
 
 
 def test_nao_envia_parametros_de_amostragem():
     msg = _Mensagem([_BlocoTexto("x")])
     sdk = _SdkFalso(resposta=msg)
-    AnthropicClient(sdk, _CONFIG).completar(system="s", mensagens=[])
+    AnthropicClient(sdk, _CONFIG).completar(tenant_id="t_1", system="s", mensagens=[])
     assert "temperature" not in sdk.chamada
     assert "top_p" not in sdk.chamada
     assert "top_k" not in sdk.chamada
@@ -163,7 +165,7 @@ def test_latencia_medida_com_relogio_controlado(monkeypatch):
     monkeypatch.setattr(anthropic_client.time, "perf_counter", lambda: next(tempos))
     msg = _Mensagem([_BlocoTexto("x")])
     cliente = AnthropicClient(_SdkFalso(resposta=msg), _CONFIG)
-    resp = cliente.completar(system="s", mensagens=[])
+    resp = cliente.completar(tenant_id="t_1", system="s", mensagens=[])
     assert resp.latencia_ms == 250
 
 
@@ -223,4 +225,4 @@ def test_hierarquia_dos_erros():
 def test_erro_do_sdk_na_chamada_e_traduzido():
     cliente = AnthropicClient(_SdkFalso(erro=_erro_status(503)), _CONFIG)
     with pytest.raises(ErroLLMTransitorio):
-        cliente.completar(system="s", mensagens=[])
+        cliente.completar(tenant_id="t_1", system="s", mensagens=[])

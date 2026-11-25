@@ -60,6 +60,8 @@ class LLMClient(ABC):
     @abstractmethod
     def completar(
         self,
+        *,
+        tenant_id,
         system: str,
         mensagens: list,
         ferramentas: Optional[list] = None,
@@ -67,7 +69,9 @@ class LLMClient(ABC):
     ) -> RespostaLLM:
         """Faz uma chamada ao modelo e devolve a resposta normalizada.
 
-        system e o prompt de sistema. mensagens e a lista de mensagens no formato do
-        projeto, cada uma com papel e conteudo. ferramentas e esquema_saida sao
-        opcionais e so entram em uso nas etapas 7 e 9.
+        Os argumentos sao keyword-only para nenhum call site trocar a ordem sem
+        perceber. tenant_id serve so ao log estruturado (etapa 6.3) e nunca vai a
+        API. system e o prompt de sistema. mensagens e a lista de mensagens no
+        formato do projeto, cada uma com papel e conteudo. ferramentas e
+        esquema_saida sao opcionais e so entram em uso nas etapas 7 e 9.
         """

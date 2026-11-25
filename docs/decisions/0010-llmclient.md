@@ -32,9 +32,12 @@ O `LLMClient` é uma interface com um método `completar`, implementada pelo `An
 ### Contrato
 
 ```python
-completar(system, mensagens, ferramentas=None, esquema_saida=None) -> RespostaLLM
+completar(*, tenant_id, system, mensagens, ferramentas=None, esquema_saida=None) -> RespostaLLM
 ```
 
+Os argumentos sao keyword-only para nenhum call site trocar a ordem sem perceber.
+
+- `tenant_id`: clínica da operação. Serve só ao log estruturado e nunca vai à API.
 - `system`: texto do prompt de sistema.
 - `mensagens`: lista de mensagens no formato do projeto, cada uma com papel e conteúdo.
 - `ferramentas`: definições de ferramentas, opcional.
@@ -86,7 +89,7 @@ A ligação no worker não é feita na etapa 6, porque nada no processamento usa
 
 ### Log
 
-Cada chamada gera um evento no log estruturado (structlog) com `tenant_id`, modelo, tokens de entrada e saída, latência, motivo de parada e id da requisição. O conteúdo das mensagens, o prompt e o telefone do contato nunca entram no log. A persistência em tabela fica para a etapa 10.
+Cada chamada gera um evento no log estruturado (structlog). O sucesso emite `llm_chamada` com `tenant_id`, modelo, tokens de entrada e saída, latência, motivo de parada e id da requisição. A falha emite `llm_chamada_falhou` antes de levantar o erro de domínio, com `tenant_id`, modelo, latência, tipo do erro de domínio (transitório ou permanente), status HTTP quando houver e id da requisição quando houver, sem tokens. O conteúdo das mensagens, o prompt, o telefone do contato e o texto da exceção do SDK nunca entram no log. O id da requisição é o que o suporte da Anthropic pede. A persistência em tabela fica para a etapa 10.
 
 ### Teste real
 
