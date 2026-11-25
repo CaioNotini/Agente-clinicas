@@ -16,6 +16,7 @@ import pytest
 from sqlalchemy import text
 
 from app.agenda import servico
+from app.agenda.agenda_propria import AgendaPropria
 from app.agenda.regras import AgendamentoDuplicado, HorarioIndisponivel
 from app.core.conversas import ConversaTravada, conversa_travada
 from app.db.database import SessionLocal
@@ -34,8 +35,8 @@ UTC = timezone.utc
 # Terca 02/03 10:00 em Sao Paulo
 INICIO = datetime(2027, 3, 2, 13, tzinfo=UTC)
 
-# Prazos (tests/concurrency/prazos.py). Varios contatos: largada, lock da conversa,
-# gravacao com as tentativas e a vencedora segurando o commit.
+# Prazos (tests/concurrency/prazos.py). Varios contatos: lock da conversa, largada
+# antes do INSERT, gravacao com as tentativas e a vencedora segurando o commit.
 PRAZO_VARIOS = ESPERA_SINAL + ESPERA_LOCK + PIOR_CASO_GRAVACAO + SEGURA_ANTES_DO_COMMIT
 # A e B: A chegou, B esperando na constraint, e a gravacao de B com as tentativas.
 PRAZO_A_B = ESPERA_LIBERAR + PIOR_CASO_GRAVACAO
@@ -48,14 +49,35 @@ def cenarios():
     limpar(dados)
 
 
-def _criar(travada, equipe, inicio=INICIO):
+def _criar(travada, equipe, inicio=INICIO, agenda=None):
     return servico.criar(
         travada,
         profissional_id=equipe["prof"],
         servico_id=equipe["serv"],
         inicio=inicio,
         agora=AGORA,
+        agenda=agenda,
     ).agendamento
+
+
+class _AgendaComLargada(AgendaPropria):
+    """Solta as threads juntas logo antes do lock da agenda e do INSERT.
+
+    A disputa que o lock do ADR 0011 resolve esta no INSERT. Uma largada no inicio
+    da operacao deixa as threads chegarem espalhadas ao INSERT, e o teste passaria
+    tambem sem o lock. So a primeira gravacao de cada thread espera: uma nova
+    tentativa depois de um 40P01 nao pode ficar presa na largada.
+    """
+
+    def __init__(self, total):
+        self._largada = threading.Barrier(total)
+        self._ja_largou = threading.local()
+
+    def criar(self, session, **campos):
+        if not getattr(self._ja_largou, "valor", False):
+            self._ja_largou.valor = True
+            self._largada.wait(timeout=ESPERA_SINAL)
+        return super().criar(session, **campos)
 
 
 def _esperar_bloqueio(timeout=ESPERA_SINAL):
@@ -78,7 +100,7 @@ def _esperar_bloqueio(timeout=ESPERA_SINAL):
 def test_varios_contatos_pelo_mesmo_horario_so_um_vence(cenarios):
     equipe = cenarios["equipe"]
     total = 4
-    largada = threading.Barrier(total)
+    agenda = _AgendaComLargada(total)
     resultados = []
     trava = threading.Lock()
 
@@ -86,8 +108,7 @@ def test_varios_contatos_pelo_mesmo_horario_so_um_vence(cenarios):
         contato = f"(00) 90000-07{indice:02d}"
         try:
             with conversa_travada(equipe["tenant"], contato) as travada:
-                largada.wait(timeout=ESPERA_SINAL)
-                _criar(travada, equipe)
+                _criar(travada, equipe, agenda=agenda)
                 time.sleep(SEGURA_ANTES_DO_COMMIT)
             resultado = "aceito"
         except HorarioIndisponivel:
@@ -124,16 +145,19 @@ def test_varios_contatos_remarcando_para_o_mesmo_horario_so_um_vence(cenarios):
         with conversa_travada(equipe["tenant"], contato) as travada:
             antigos[contato] = _criar(travada, equipe, inicio).id
 
-    largada = threading.Barrier(total)
+    agenda = _AgendaComLargada(total)
     resultados = {}
     trava = threading.Lock()
 
     def remarcar(contato):
         try:
             with conversa_travada(equipe["tenant"], contato) as travada:
-                largada.wait(timeout=ESPERA_SINAL)
                 resultado = servico.remarcar(
-                    travada, antigos[contato], novo_inicio=INICIO, agora=AGORA
+                    travada,
+                    antigos[contato],
+                    novo_inicio=INICIO,
+                    agora=AGORA,
+                    agenda=agenda,
                 ).situacao
                 time.sleep(SEGURA_ANTES_DO_COMMIT)
         except HorarioIndisponivel:

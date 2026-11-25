@@ -4,10 +4,12 @@ A aplicação conecta com app_clinicas, sujeita ao RLS.
 Os dados são criados e removidos com a conta de migrations (cnotini).
 """
 import uuid
+from contextlib import contextmanager
 
 import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import DBAPIError
+from sqlalchemy.pool import NullPool
 
 from app.config import DATABASE_URL, MIGRATION_DATABASE_URL
 
@@ -261,6 +263,148 @@ def test_alteracao_e_exclusao_de_outro_tenant_nao_afetam_linhas(tabela, tenants)
         transacao.rollback()
     assert atualizadas == 0
     assert apagadas == 0
+
+
+# --- app.tenant_id vazio (ADR 0011) ------------------------------------------------
+#
+# Um set_config(..., true) vale so ate o fim da transacao. Depois dela, na mesma
+# conexao do pool, o setting fica '' em vez de sumir. A garantia e que essa conexao
+# nao ve, cria, altera nem apaga linha de nenhuma clinica. O codigo de erro (22P02 no
+# cast ''::uuid) depende do plano da consulta, entao e registrado, nao afirmado.
+
+# So estas barreiras contam. Qualquer outro erro (FK, unicidade, NOT NULL) falha o
+# teste, porque poderia esconder uma policy que deixou a escrita passar. O 42501 serve
+# ao RLS e a falta de grant: a mensagem separa os dois. Com grant, a policy nem chegou
+# a ser exercitada, e o teste so registra.
+_POLICY_22P02 = "policy (22P02)"
+_POLICY_RLS = "policy (42501, row-level security)"
+_GRANT = "grant (42501)"
+_NENHUMA_LINHA = "policy (nenhuma linha)"
+
+
+@contextmanager
+def _conexao_com_setting_vazio(tenant):
+    """Conexao app_clinicas cujo app.tenant_id ficou '' depois de uma transacao."""
+    engine = create_engine(DATABASE_URL, poolclass=NullPool)
+    try:
+        with engine.connect() as conexao:
+            with conexao.begin():
+                conexao.execute(
+                    text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(tenant)}
+                )
+            vazio = conexao.execute(text("SELECT current_setting('app.tenant_id')")).scalar()
+            conexao.rollback()
+            # Sem isto o teste estaria exercitando o setting ausente, e nao o vazio
+            assert vazio == "", f"setting esperado vazio, veio {vazio!r}"
+            yield conexao
+    finally:
+        engine.dispose()
+
+
+def _executar_e_confirmar(conexao, sql, params):
+    """Executa e confirma a transacao. Devolve (linhas ou rowcount, erro do banco)."""
+    try:
+        with conexao.begin():
+            resultado = conexao.execute(text(sql), params)
+            return (resultado.all() if resultado.returns_rows else resultado.rowcount), None
+    except DBAPIError as erro:
+        return None, erro
+
+
+def _barreira(erro, efeito_nulo):
+    """Qual barreira impediu a operacao. None quando nada impediu ou o erro nao conta."""
+    if erro is None:
+        return _NENHUMA_LINHA if efeito_nulo else None
+    codigo = getattr(erro.orig, "pgcode", None)
+    if codigo == "22P02":
+        return _POLICY_22P02
+    if codigo == "42501":
+        return _POLICY_RLS if "row-level security" in str(erro.orig) else _GRANT
+    return None
+
+
+def _registrar_barreira(request, erro, efeito_nulo):
+    """Guarda a barreira no relatorio (junitxml). O codigo e registrado, nao afirmado."""
+    barreira = _barreira(erro, efeito_nulo)
+    codigo = getattr(getattr(erro, "orig", None), "pgcode", None)
+    request.node.user_properties.append(("barreira", barreira or f"nao aceita ({codigo})"))
+    return barreira
+
+
+def _controle_de_dados(tenants, tabela):
+    """Sem linhas das duas clinicas, 'nenhuma linha' passaria por tabela vazia."""
+    contagens = tuple(_contar_como(tenant, tabela) for tenant in tenants)
+    assert min(contagens) >= 1, contagens
+    return contagens
+
+
+def _ab(tenants):
+    return {"a": str(tenants[0]), "b": str(tenants[1])}
+
+
+@pytest.mark.parametrize("tabela", TABELAS_TENANT)
+def test_setting_vazio_select_nao_devolve_linhas(tabela, tenants, request):
+    _controle_de_dados(tenants, tabela)
+    with _conexao_com_setting_vazio(tenants[0]) as conexao:
+        linhas, erro = _executar_e_confirmar(conexao, f"SELECT tenant_id FROM {tabela}", {})
+    assert _registrar_barreira(request, erro, linhas == []), (linhas, erro)
+
+
+@pytest.mark.parametrize("tabela", TABELAS_TENANT)
+def test_setting_vazio_insert_nao_cria_linha(tabela, tenants, request):
+    tenant_a, tenant_b = tenants
+    # Em clinicas, o tenant_id e a propria identidade: o alvo e um UUID novo
+    alvo = uuid.uuid4() if tabela == "clinicas" else tenant_b
+    colunas = _colunas_minimas(tabela, alvo)
+    antes = _contar_como(alvo, tabela)
+    criadas, erro = None, None
+    try:
+        with _conexao_com_setting_vazio(tenant_a) as conexao:
+            criadas, erro = _executar_e_confirmar(
+                conexao,
+                f"INSERT INTO {tabela} ({colunas['nomes']}) VALUES ({colunas['marcas']}) "
+                "RETURNING ctid::text",
+                colunas["valores"],
+            )
+    finally:
+        # Se a policy falhar e a linha for criada, ela sai pela conta de administracao
+        if criadas:
+            with engine_admin.begin() as conexao:
+                for (ctid,) in criadas:
+                    conexao.execute(
+                        text(f"DELETE FROM {tabela} WHERE ctid = CAST(:c AS tid)"),
+                        {"c": ctid},
+                    )
+    barreira = _registrar_barreira(request, erro, False)
+    assert not criadas, f"linha criada com setting vazio: {criadas}"
+    assert barreira, f"barrado por erro que nao e a policy: {erro}"
+    assert _contar_como(alvo, tabela) == antes
+
+
+@pytest.mark.parametrize("tabela", TABELAS_TENANT)
+def test_setting_vazio_update_nao_altera_linhas(tabela, tenants, request):
+    _controle_de_dados(tenants, tabela)
+    with _conexao_com_setting_vazio(tenants[0]) as conexao:
+        alteradas, erro = _executar_e_confirmar(
+            conexao,
+            f"UPDATE {tabela} SET tenant_id = tenant_id WHERE tenant_id IN (:a, :b)",
+            _ab(tenants),
+        )
+    assert _registrar_barreira(request, erro, alteradas == 0), (alteradas, erro)
+
+
+@pytest.mark.parametrize("tabela", TABELAS_TENANT)
+def test_setting_vazio_delete_nao_apaga_linhas(tabela, tenants, request):
+    tenant_a, tenant_b = tenants
+    antes = _controle_de_dados(tenants, tabela)
+    with _conexao_com_setting_vazio(tenant_a) as conexao:
+        apagadas, erro = _executar_e_confirmar(
+            conexao,
+            f"DELETE FROM {tabela} WHERE tenant_id IN (:a, :b)",
+            _ab(tenants),
+        )
+    assert _registrar_barreira(request, erro, apagadas == 0), (apagadas, erro)
+    assert (_contar_como(tenant_a, tabela), _contar_como(tenant_b, tabela)) == antes
 
 def _problemas_de_cobertura_rls():
     """Confere no catálogo cada tabela de public com coluna tenant_id.
