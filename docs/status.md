@@ -1,7 +1,7 @@
 ```
 Papel: Índice de entrada único da documentação e registro do estado verificado mais recente.
 Entrada: docs/status.md
-Relaciona-se com: etapas.md, estudo.md, arquitetura.md, principios.md, decisions/README.md, diagnosticos/2026-11-18-plano-rodada3.md, diagnosticos/2026-11-24-rodada4.md
+Relaciona-se com: etapas.md, estudo.md, arquitetura.md, principios.md, decisions/README.md, diagnosticos/2026-11-18-plano-rodada3.md, diagnosticos/2026-11-24-rodada4.md, diagnosticos/2026-11-25-rodada5.md
 ```
 
 # Status do projeto
@@ -89,6 +89,7 @@ O que o código garante hoje, com a decisão de cada ponto:
 - [`decisions/README.md`](./decisions/README.md): ADRs 0001 a 0010
 - [`fake_clinic/clinica.md`](./fake_clinic/clinica.md), [`fake_clinic/FAQ.md`](./fake_clinic/FAQ.md) e [`fake_clinic/pergs_bloqueadas.md`](./fake_clinic/pergs_bloqueadas.md): base fictícia (clínica com equipe e recepção)
 - [`fake_clinic/consultorio_solo.md`](./fake_clinic/consultorio_solo.md): segundo tenant fictício, consultório de um profissional só, sem recepção, para testar as regras da etapa 5 nos dois cenários
+- [`diagnosticos/2026-11-25-rodada5.md`](./diagnosticos/2026-11-25-rodada5.md): diagnóstico da rodada 5, inspeção de 2026-11-25
 - [`diagnosticos/2026-11-24-rodada4.md`](./diagnosticos/2026-11-24-rodada4.md): diagnóstico da rodada 4, inspeção de 2026-11-24
 - [`diagnosticos/2026-11-18-plano-rodada3.md`](./diagnosticos/2026-11-18-plano-rodada3.md): plano de trabalho da rodada 3, com os itens ainda abertos
 - [`diagnosticos/2026-10-13-rodada1.md`](./diagnosticos/2026-10-13-rodada1.md) e [`diagnosticos/2026-10-27-rodada2.md`](./diagnosticos/2026-10-27-rodada2.md): diagnósticos históricos
