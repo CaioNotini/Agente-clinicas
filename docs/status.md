@@ -12,7 +12,7 @@ Estado verificado em 2026-11-25. O histórico detalhado de cada mudança fica no
 
 **Etapa 6 concluída. Próxima etapa ativa: 7, classificação, mensagens fixas e auditoria.** As etapas 0 a 6 estão concluídas.
 
-Etapa 6 (concluída), resumo: chamada ao modelo por uma interface única. `LLMClient` e a implementação `AnthropicClient` sobre o SDK `anthropic==2.14.0` (versão `2026-10-21` da API, `max_retries=0`), com o modelo em `LLM_MODEL` (`claude-haiku-5-5`), validado só na criação do cliente. Hierarquia de erros transitório e permanente, com o permanente herdando de `ErroPermanente`. Telemetria de cada chamada no log estruturado, nos eventos `llm_chamada` e `llm_chamada_falhou`, sem prompt, conteúdo nem telefone. Backoff no retry de jobs, `min(base * 2 ** (tentativas - 1), teto)` com `base` de 60 s e `teto` de 1800 s, só no retry e nunca no `dead`. Teste real com o marcador `llm_real`, fora da CI. Decisões em [ADR 0010](./decisions/0010-llmclient.md) e [ADR 0005](./decisions/0005-ordem-por-conversa.md). O processamento ainda não chama o LLM. A ligação com o conteúdo da mensagem entra na etapa 7, com a classificação.
+Etapa 6 (concluída), resumo: chamada ao modelo por uma interface única. `LLMClient` e a implementação `AnthropicClient` sobre o SDK `anthropic==2.14.0` (versão `2026-10-21` da API), com o modelo em `LLM_MODEL` (`claude-haiku-5-5`), validado só na criação do cliente. Hierarquia de erros transitório e permanente, com o permanente herdando de `ErroPermanente`. Telemetria de cada chamada no log estruturado, nos eventos `llm_chamada` e `llm_chamada_falhou`, sem prompt, conteúdo nem telefone. Backoff no retry de jobs, `min(base * 2 ** (tentativas - 1), teto)` com `base` de 60 s e `teto` de 1800 s, só no retry e nunca no `dead`. Teste real com o marcador `llm_real`, fora da CI. Decisões em [ADR 0010](./decisions/0010-llmclient.md) e [ADR 0005](./decisions/0005-ordem-por-conversa.md). O processamento ainda não chama o LLM. A ligação com o conteúdo da mensagem entra na etapa 7, com a classificação. Antes da 7.1, em 2026-11-25, a criação do SDK passou a ter um único ponto, [`app/llm/fabrica.py`](../app/llm/fabrica.py), que fixa `max_retries=0` e o timeout (A8 e B20 da [rodada 5](./diagnosticos/2026-11-25-rodada5.md)).
 
 | Etapa  | Estado        |
 | ------ | ------------- |
@@ -41,6 +41,7 @@ O que o código garante hoje, com a decisão de cada ponto:
 - Efeitos de um job confirmados uma vez só, junto com a conclusão do job ([ADR 0008](./decisions/0008-conclusao-atomica-do-job.md)).
 - Transições de estado pelo grafo do [ADR 0003](./decisions/0003-grafo-de-transicoes.md).
 - Erro permanente (`ConfiguracaoInvalida`, `MisturaDeTenants`) leva o job a `dead` na primeira falha, com log estruturado de erro. O texto de exceções não vai ao paciente (seções 7 e 8.1 da [arquitetura](./arquitetura.md)).
+- O SDK da Anthropic só é criado em [`app/llm/fabrica.py`](../app/llm/fabrica.py), com `max_retries=0` e timeout de 60 s (5 s para a conexão), menor que o limite de órfão do job. Um teste confere os valores e varre `app/` atrás de outra criação do SDK ([ADR 0010](./decisions/0010-llmclient.md)).
 - Senhas das roles aplicadas por script, sem passo manual ([ADR 0006](./decisions/0006-provisionamento-de-roles.md)).
 
 ## Decisões recentes
@@ -54,6 +55,8 @@ O que o código garante hoje, com a decisão de cada ponto:
 **Previstas para etapas futuras**
 
 - 7.3: `MENSAGEM_URGENCIA` em [`fixas.py`](../app/mensagens/fixas.py) ainda não cita o CVV (188), decidido na seção 8.3 da [arquitetura](./arquitetura.md#83-escopo-clínico).
+- 7.2: chamar `criar_cliente_llm` no `main()` do worker e injetar o cliente no processamento ([ADR 0010](./decisions/0010-llmclient.md)). Hoje a função existe, mas nada a chama.
+- 9: o timeout do LLM é por chamada. Um job com várias chamadas (classificação e function calling) pode somar mais que os 300 s do limite de órfão ([ADR 0010](./decisions/0010-llmclient.md)).
 - 8: o [`FAQ.md`](./fake_clinic/FAQ.md) não tem mais entradas clínicas. O critério "trechos marcados como bloqueado nunca são retornados" vai precisar de um trecho clínico de teste criado na própria etapa 8.
 
 - 13: não abrir handoff novo se já houver um aberto para a mesma conversa, motivo e agendamento. Na 5.4 cada pedido grava uma linha.

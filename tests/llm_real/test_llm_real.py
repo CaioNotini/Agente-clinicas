@@ -23,13 +23,13 @@ import os
 import uuid
 
 import pytest
-from anthropic import Anthropic
 from structlog.testing import capture_logs
 
 from app.config import ler_config_llm
 from app.llm.anthropic_client import AnthropicClient
 from app.llm.base import ConfigLLM
 from app.llm.erros import ErroLLMPermanente
+from app.llm.fabrica import criar_sdk_anthropic
 
 # Pula tudo se faltar ANTHROPIC_API_KEY ou LLM_MODEL, dizendo qual falta.
 _FALTANDO = [nome for nome in ("ANTHROPIC_API_KEY", "LLM_MODEL") if not os.getenv(nome)]
@@ -57,11 +57,10 @@ def _config(max_tokens=1024, modelo=None):
 
 
 def _cliente_real(config, chave=None):
-    """AnthropicClient sobre o SDK real, com max_retries=0 (ADR 0010)."""
+    """AnthropicClient sobre o SDK real, criado pela fabrica da aplicacao (ADR 0010)."""
     if chave is None:
         _, chave = ler_config_llm()
-    sdk = Anthropic(api_key=chave, max_retries=0)
-    return AnthropicClient(sdk, config)
+    return AnthropicClient(criar_sdk_anthropic(chave), config)
 
 
 @pytest.mark.timeout(TIMEOUT_REAL)

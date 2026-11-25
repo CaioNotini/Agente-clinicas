@@ -1,7 +1,7 @@
 ```
 Papel: registra o contrato do LLMClient da etapa 6, a versão do SDK e da API da Anthropic, a hierarquia de erros e a configuração do modelo.
 Entrada: docs/status.md
-Relaciona-se com: ../arquitetura.md (D-13 e seção 6, Interfaces), ../etapas.md (etapa 6), 0005-ordem-por-conversa.md, 0008-conclusao-atomica-do-job.md, ../../app/core/erros.py, ../../app/config.py, ../../.env.example, ../../pytest.ini
+Relaciona-se com: ../arquitetura.md (D-13 e seção 6, Interfaces), ../etapas.md (etapa 6), 0005-ordem-por-conversa.md, 0008-conclusao-atomica-do-job.md, ../../app/core/erros.py, ../../app/config.py, ../../app/llm/fabrica.py, ../../.env.example, ../../pytest.ini
 ```
 
 # 0010: Contrato do LLMClient e SDK da Anthropic na versão 2026-10-21 da API
@@ -27,7 +27,7 @@ Pontos que motivaram a decisão:
 
 ## Decisão
 
-O `LLMClient` é uma interface com um método `completar`, implementada pelo `AnthropicClient` sobre o SDK `anthropic==2.14.0`, que envia a versão `2026-10-21` da API. O SDK roda com `max_retries=0`, e o modelo vem da variável obrigatória `LLM_MODEL`, validada só quando o cliente é criado.
+O `LLMClient` é uma interface com um método `completar`, implementada pelo `AnthropicClient` sobre o SDK `anthropic==2.14.0`, que envia a versão `2026-10-21` da API. O SDK roda com `max_retries=0` e timeout de 60 s, com 5 s para a conexão. Os dois valores são fixados no código, na única função que cria o SDK, e cobertos por teste. O modelo vem da variável obrigatória `LLM_MODEL`, validada só quando o cliente é criado.
 
 ### Contrato
 
@@ -84,9 +84,22 @@ A mensagem do erro leva só o tipo, o status HTTP e o id da requisição. O text
 
 ### Onde o cliente é criado
 
-O cliente é criado uma vez, no ponto de entrada do worker, e injetado no processamento. Se faltar a chave ou o modelo, o `RuntimeError` impede o worker de subir e nenhum job é consumido. Os testes que chamam o processamento direto recebem um dublê e nunca dependem de `LLM_MODEL` nem de `ANTHROPIC_API_KEY`. A CI continua sem essas variáveis.
+Onde a função mora e onde ela é chamada são coisas diferentes.
 
-A ligação no worker não é feita na etapa 6, porque nada no processamento usa o LLM ainda. Criar o cliente na subida faria o worker exigir as duas variáveis sem usá-las. A ligação entra na etapa 7, quando o processamento passar a chamar o modelo.
+- **Onde mora:** em [`app/llm/fabrica.py`](../../app/llm/fabrica.py). `criar_sdk_anthropic` é o único ponto de `app/` que cria o SDK, com o timeout e o `max_retries` fixos. `criar_cliente_llm` lê a configuração com `ler_config_llm` e devolve o `AnthropicClient`. O módulo de jobs não importa o SDK, então a troca de provedor (Bedrock, etapa 16) fica restrita a `app/llm/`. Um teste em [`test_cliente_llm.py`](../../tests/unit/test_cliente_llm.py) varre `app/` e falha se outro arquivo criar `Anthropic` ou `AsyncAnthropic`.
+- **Onde é chamada:** uma vez, no `main()` do worker, e o cliente é injetado no processamento. Se faltar a chave ou o modelo, o `RuntimeError` impede o worker de subir e nenhum job é consumido. Os testes que chamam o processamento direto recebem um dublê e nunca dependem de `LLM_MODEL` nem de `ANTHROPIC_API_KEY`. A CI continua sem essas variáveis.
+
+A ligação no worker não é feita na etapa 6, porque nada no processamento usa o LLM ainda. Criar o cliente na subida faria o worker exigir as duas variáveis sem usá-las. A ligação no `main()` entra na tarefa 7.2, quando o processamento passar a chamar o modelo. O teste real (`llm_real`) também cria o SDK por `criar_sdk_anthropic`.
+
+### Timeout e nova tentativa do SDK
+
+Decidido em 2026-11-25, antes da tarefa 7.1 (achado A8 da [rodada 5](../diagnosticos/2026-11-25-rodada5.md)).
+
+- **`max_retries=0`.** A nova tentativa fica numa camada só, a do job, contada em `attempts` e com backoff. O retry do SDK aconteceria dentro do lock da conversa e fora de `attempts`.
+- **Timeout de 60 s, com 5 s para a conexão.** O timeout precisa ser menor que `LIMITE_LOCK_SEGUNDOS` (300 s, em [`worker.py`](../../app/jobs/worker.py)). Assim, uma chamada travada termina antes de o job virar órfão. Sem isso, outro worker recapturaria o job e faria uma segunda chamada paga. O ADR 0008 evita o efeito duplicado no banco, mas não o custo. O padrão do SDK 2.14.0 é de 600 s.
+- **O limite vale por fase do httpx, não no total.** As fases são conexão, envio, leitura e espera por conexão. A conexão de 5 s reduz o pior caso somado para cerca de 185 s. Na chamada sem streaming, a leitura espera a resposta inteira, então o limite prático de uma chamada fica perto dos 60 s.
+- **O limite é por chamada, não por job.** Se um job fizer várias chamadas, como a classificação e o function calling da etapa 9, a soma pode passar de 300 s. Isso precisa ser revisto na etapa 9.
+- O teste unitário confere `max_retries == 0`, os valores de cada fase e que cada fase é menor que `LIMITE_LOCK_SEGUNDOS`. Subir o timeout para 300 s ou mais derruba o teste.
 
 ### Log
 
