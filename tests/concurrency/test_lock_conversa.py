@@ -20,12 +20,22 @@ from sqlalchemy.exc import OperationalError
 from app.config import MIGRATION_DATABASE_URL
 from app.core.conversas import conversa_travada
 from app.core.estados import IDLE
+from tests.concurrency.prazos import ESPERA_LOCK, ESPERA_SINAL, juntar, limite_pytest
 
 # Conexao de administracao, so para preparar e limpar os dados do teste
 engine_admin = create_engine(MIGRATION_DATABASE_URL)
 
 # Tempo que a primeira transacao segura o lock antes de liberar
 HOLD = 0.5
+# Lock ocupado alem do lock_timeout curto da segunda transacao
+HOLD_LONGO = 2.0
+TIMEOUT_CURTO_MS = 300
+
+# Prazos (tests/concurrency/prazos.py). B espera A chegar, A segura o lock por HOLD,
+# e B espera o lock no maximo lock_timeout.
+PRAZO_HOLD = ESPERA_SINAL + HOLD + ESPERA_LOCK
+# A segura por HOLD_LONGO, e B sai antes, pelo lock_timeout curto.
+PRAZO_LOCK_TIMEOUT = ESPERA_SINAL + HOLD_LONGO
 
 CONTATO = "(00) 00000-0001"
 OUTRO_CONTATO = "(00) 00000-0002"
@@ -103,6 +113,7 @@ def _executar(func, erros):
         erros.append(e)
 
 
+@pytest.mark.timeout(limite_pytest(PRAZO_HOLD))
 def test_segunda_transacao_espera_a_primeira(tenant):
     """A segunda transacao na mesma conversa so prossegue depois que a primeira libera."""
     # Conversa ja existe e commitada: o lock do FOR UPDATE e a unica serializacao
@@ -122,7 +133,7 @@ def test_segunda_transacao_espera_a_primeira(tenant):
 
     def segunda():
         # So tenta travar depois que a primeira ja esta dentro, segurando o lock
-        assert a_dentro.wait(timeout=5)
+        assert a_dentro.wait(timeout=ESPERA_SINAL)
         with conversa_travada(tenant, CONTATO):
             eventos["b_lock"] = time.perf_counter()
 
@@ -130,17 +141,17 @@ def test_segunda_transacao_espera_a_primeira(tenant):
     tb = threading.Thread(target=_executar, args=(segunda, erros))
     ta.start()
     tb.start()
-    ta.join(timeout=10)
-    tb.join(timeout=10)
+    vivas = juntar([ta, tb], PRAZO_HOLD)
 
+    assert not vivas, (vivas, erros)
     assert not erros, f"erro nas threads: {erros}"
-    assert not ta.is_alive() and not tb.is_alive(), "thread travou (possivel deadlock)"
 
     # B so obteve o lock depois de A liberar, e esperou perto do tempo de posse de A
     assert eventos["b_lock"] >= eventos["a_unlock"]
     assert (eventos["b_lock"] - eventos["a_lock"]) >= HOLD * 0.8
 
 
+@pytest.mark.timeout(limite_pytest(PRAZO_HOLD))
 def test_contatos_diferentes_nao_bloqueiam(tenant):
     """Conversas de contatos diferentes nao serializam entre si."""
     eventos = {}
@@ -155,7 +166,7 @@ def test_contatos_diferentes_nao_bloqueiam(tenant):
             eventos["a_unlock"] = time.perf_counter()
 
     def segunda():
-        assert a_dentro.wait(timeout=5)
+        assert a_dentro.wait(timeout=ESPERA_SINAL)
         with conversa_travada(tenant, OUTRO_CONTATO):
             eventos["b_lock"] = time.perf_counter()
 
@@ -163,14 +174,15 @@ def test_contatos_diferentes_nao_bloqueiam(tenant):
     tb = threading.Thread(target=_executar, args=(segunda, erros))
     ta.start()
     tb.start()
-    ta.join(timeout=10)
-    tb.join(timeout=10)
+    vivas = juntar([ta, tb], PRAZO_HOLD)
 
+    assert not vivas, (vivas, erros)
     assert not erros, f"erro nas threads: {erros}"
     # B travou o outro contato enquanto A ainda segurava o seu: nao esperou
     assert eventos["b_lock"] < eventos["a_unlock"]
 
 
+@pytest.mark.timeout(limite_pytest(PRAZO_HOLD))
 def test_tenants_diferentes_nao_bloqueiam(dois_tenants):
     """Conversas de tenants diferentes nao serializam entre si (mesmo contato)."""
     tenant_a, tenant_b = dois_tenants
@@ -186,7 +198,7 @@ def test_tenants_diferentes_nao_bloqueiam(dois_tenants):
             eventos["a_unlock"] = time.perf_counter()
 
     def segunda():
-        assert a_dentro.wait(timeout=5)
+        assert a_dentro.wait(timeout=ESPERA_SINAL)
         with conversa_travada(tenant_b, CONTATO):
             eventos["b_lock"] = time.perf_counter()
 
@@ -194,13 +206,14 @@ def test_tenants_diferentes_nao_bloqueiam(dois_tenants):
     tb = threading.Thread(target=_executar, args=(segunda, erros))
     ta.start()
     tb.start()
-    ta.join(timeout=10)
-    tb.join(timeout=10)
+    vivas = juntar([ta, tb], PRAZO_HOLD)
 
+    assert not vivas, (vivas, erros)
     assert not erros, f"erro nas threads: {erros}"
     assert eventos["b_lock"] < eventos["a_unlock"]
 
 
+@pytest.mark.timeout(limite_pytest(PRAZO_HOLD))
 def test_criacao_concorrente_nao_duplica(tenant):
     """Duas transacoes criando a mesma conversa ao mesmo tempo geram uma linha so.
 
@@ -215,7 +228,7 @@ def test_criacao_concorrente_nao_duplica(tenant):
     barreira = threading.Barrier(2)
 
     def criar():
-        barreira.wait(timeout=5)
+        barreira.wait(timeout=ESPERA_SINAL)
         with conversa_travada(tenant, CONTATO) as c:
             _ = c.id
             # segura um instante dentro do bloco para a segunda transacao chegar
@@ -226,14 +239,14 @@ def test_criacao_concorrente_nao_duplica(tenant):
     t2 = threading.Thread(target=_executar, args=(criar, erros))
     t1.start()
     t2.start()
-    t1.join(timeout=10)
-    t2.join(timeout=10)
+    vivas = juntar([t1, t2], PRAZO_HOLD)
 
-    assert not t1.is_alive() and not t2.is_alive(), "thread travou (possivel deadlock)"
+    assert not vivas, (vivas, erros)
     assert not erros, f"erro nas threads: {erros}"
     assert _contar_conversas(tenant, CONTATO) == 1
 
 
+@pytest.mark.timeout(limite_pytest(PRAZO_LOCK_TIMEOUT))
 def test_lock_timeout_devolve_erro_sem_prender(tenant):
     """Com o lock ocupado alem do lock_timeout, a segunda transacao erra e nao prende.
 
@@ -244,8 +257,6 @@ def test_lock_timeout_devolve_erro_sem_prender(tenant):
     _criar_conversa(tenant, CONTATO)
     a_dentro = threading.Event()
     resultado = {}
-    HOLD_LONGO = 2.0
-    TIMEOUT_CURTO_MS = 300
 
     def primeira():
         with conversa_travada(tenant, CONTATO):
@@ -253,7 +264,7 @@ def test_lock_timeout_devolve_erro_sem_prender(tenant):
             time.sleep(HOLD_LONGO)
 
     def segunda():
-        assert a_dentro.wait(timeout=5)
+        assert a_dentro.wait(timeout=ESPERA_SINAL)
         inicio = time.perf_counter()
         try:
             with conversa_travada(tenant, CONTATO, lock_timeout_ms=TIMEOUT_CURTO_MS):
@@ -266,10 +277,9 @@ def test_lock_timeout_devolve_erro_sem_prender(tenant):
     tb = threading.Thread(target=segunda)
     ta.start()
     tb.start()
-    ta.join(timeout=10)
-    tb.join(timeout=10)
+    vivas = juntar([ta, tb], PRAZO_LOCK_TIMEOUT)
 
-    assert not ta.is_alive() and not tb.is_alive(), "thread travou (possivel deadlock)"
+    assert not vivas, (vivas, resultado)
     assert "travou" not in resultado, "a segunda nao deveria ter obtido o lock"
     assert "erro" in resultado, "esperado erro de lock_timeout na segunda transacao"
     # Distingue lock timeout de outro OperationalError (ex.: statement_timeout,

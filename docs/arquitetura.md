@@ -396,6 +396,8 @@ O ambiente local precisa de credencial IAM de permissão mínima, com acesso ao 
 | Painel          | Usuário de uma clínica não vê conversas, agenda nem handoffs de outra                                                                                                                                                 | CI                                                                                        |
 | Avaliação de IA | 30 a 50 conversas simuladas e conjunto de tentativas de desvio. Métricas: acerto de intenção, recall de `clinico_bloqueado` e `urgencia` (falso negativo é o erro mais caro), escalonamento correto, custo e latência | Sob demanda e antes de mudar prompt ou modelo. Reexecutada após a migração para o Bedrock |
 
+**Prazos dos testes de concorrência.** Toda espera interna de um teste de concorrência (`Barrier`, `Event`, cadeia de tentativas e espera das threads) termina antes do limite do pytest, com margem. O prazo vem do pior caso que o próprio código garante, como o `lock_timeout` vezes as tentativas, e o limite do pytest do teste é esse prazo mais a margem. Assim o teste falha pela própria asserção, com o resultado de cada thread, e a limpeza roda. Os valores e a regra ficam em [`tests/concurrency/prazos.py`](../tests/concurrency/prazos.py), e um teste da pasta recusa prazo escrito à mão.
+
 ## 10. Escopo do MVP
 
 | Dentro do MVP                                                          | Fora do MVP                                                                                                     |

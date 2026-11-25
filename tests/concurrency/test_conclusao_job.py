@@ -21,8 +21,19 @@ from app.core.conversas import conversa_travada
 from app.db.database import SessionLocal
 from app.jobs import worker
 from app.jobs.queue import gravar_e_enfileirar
+from tests.concurrency.prazos import (
+    ESPERA_LIBERAR,
+    ESPERA_LOCK,
+    ESPERA_SINAL,
+    juntar,
+    limite_pytest,
+)
 
 engine_admin = create_engine(MIGRATION_DATABASE_URL)
+
+# Prazo da recaptura (tests/concurrency/prazos.py): A chega ao ponto de espera, B
+# recaptura o job, e B espera o lock da conversa no maximo lock_timeout.
+PRAZO_RECAPTURA = ESPERA_LIBERAR + ESPERA_LOCK
 
 ACAO = "efeito-teste-conclusao"
 CONTATO = "(00) 90000-0801"
@@ -65,7 +76,7 @@ def _job(job_id):
         ).first()
 
 
-def _esperar_locked_by(job_id, worker_id, prazo=5.0, intervalo=0.02):
+def _esperar_locked_by(job_id, worker_id, prazo=ESPERA_SINAL, intervalo=0.02):
     """Espera o job passar a pertencer a worker_id, confirmado no banco.
 
     Confirma a recaptura sem depender de tempo fixo: faz poll do locked_by ate o
@@ -130,6 +141,7 @@ def test_queda_entre_efeito_e_conclusao_pelo_worker_nao_duplica(tenant, monkeypa
     assert _job(job_id).status == "done"
 
 
+@pytest.mark.timeout(limite_pytest(PRAZO_RECAPTURA))
 def test_recaptura_durante_processamento_lento_confirma_um_efeito(tenant):
     """B recaptura o job enquanto A ainda processa. So o dono atual confirma.
 
@@ -150,7 +162,7 @@ def test_recaptura_durante_processamento_lento_confirma_um_efeito(tenant):
     def segurar(job):
         a_gravou_efeito.set()
         # Timeout de seguranca: se o teste falhar antes de liberar, A nao fica presa.
-        liberar_a.wait(timeout=10)
+        liberar_a.wait(timeout=ESPERA_LIBERAR)
 
     def rodar_a():
         worker.processar_um(
@@ -168,7 +180,7 @@ def test_recaptura_durante_processamento_lento_confirma_um_efeito(tenant):
 
     thread_a.start()
     try:
-        assert a_gravou_efeito.wait(timeout=5), "A nao chegou ao ponto de espera"
+        assert a_gravou_efeito.wait(timeout=ESPERA_SINAL), "A nao chegou ao ponto de espera"
         # B recaptura o job (reivindicar_job grava locked_by antes de esperar o lock
         # da conversa). So liberamos A depois de confirmar a recaptura no banco.
         thread_b.start()
@@ -177,9 +189,8 @@ def test_recaptura_durante_processamento_lento_confirma_um_efeito(tenant):
         # Libera A mesmo se a confirmacao acima falhar, para nao vazar threads.
         liberar_a.set()
 
-    thread_a.join(timeout=10)
-    thread_b.join(timeout=10)
-    assert not thread_a.is_alive() and not thread_b.is_alive(), "worker nao terminou"
+    vivas = juntar([thread_a, thread_b], PRAZO_RECAPTURA)
+    assert not vivas, ("worker nao terminou", vivas)
 
     assert _efeitos(tenant) == 1
     estado = _job(job_id)

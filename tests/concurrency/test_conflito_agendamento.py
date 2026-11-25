@@ -17,10 +17,17 @@ import threading
 import time
 from datetime import datetime, timezone
 
+import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
 from app.agenda.agenda_propria import AgendaPropria
+from tests.concurrency.prazos import (
+    DEADLOCK_TIMEOUT,
+    ESPERA_SINAL,
+    juntar,
+    limite_pytest,
+)
 from tests.integration.test_agenda_propria import (  # noqa: F401 - cenario e fixture
     TELEFONE,
     cenario,
@@ -37,7 +44,12 @@ REJEICOES_ESPERADAS = {"23P01", "40P01"}
 # Tempo que cada transacao fica aberta depois do insert, para a outra inserir antes do commit
 ESPERA_ANTES_DO_COMMIT = 0.5
 
+# Prazo (tests/concurrency/prazos.py). Sem lock_timeout nesta sessao, a espera da
+# segunda termina no commit da primeira ou quando o banco aborta um deadlock.
+PRAZO = ESPERA_SINAL + ESPERA_ANTES_DO_COMMIT + DEADLOCK_TIMEOUT
 
+
+@pytest.mark.timeout(limite_pytest(PRAZO))
 def test_duas_gravacoes_concorrentes_do_mesmo_horario_so_uma_e_aceita(cenario):
     tenant, profissional, servico = cenario
     largada = threading.Barrier(2)
@@ -47,7 +59,7 @@ def test_duas_gravacoes_concorrentes_do_mesmo_horario_so_uma_e_aceita(cenario):
     def gravar():
         try:
             with sessao_tenant(tenant) as session:
-                largada.wait(timeout=5)
+                largada.wait(timeout=ESPERA_SINAL)
                 AgendaPropria().criar(
                     session,
                     profissional_id=profissional,
@@ -69,9 +81,9 @@ def test_duas_gravacoes_concorrentes_do_mesmo_horario_so_uma_e_aceita(cenario):
     threads = [threading.Thread(target=gravar) for _ in range(2)]
     for thread in threads:
         thread.start()
-    for thread in threads:
-        thread.join(timeout=8)
+    vivas = juntar(threads, PRAZO)
 
+    assert not vivas, (vivas, resultados)
     assert len(resultados) == 2, resultados
     assert resultados.count("aceito") == 1, resultados
     rejeicao = next(r for r in resultados if r != "aceito")

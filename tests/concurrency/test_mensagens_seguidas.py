@@ -25,6 +25,7 @@ from app.core.conversas import conversa_travada
 from app.core.estados import IDLE
 from app.core.processamento import processar_mensagem
 from app.jobs.worker import processar_um, reivindicar_job
+from tests.concurrency.prazos import ESPERA_LOCK, juntar, limite_pytest
 
 # Conexao de administracao, so para preparar e limpar os dados do teste
 engine_admin = create_engine(MIGRATION_DATABASE_URL)
@@ -34,6 +35,11 @@ CONTATO = "(00) 00000-0001"
 # Tempo que cada processamento segura o lock da conversa, para tornar observavel
 # a sobreposicao (ou a ausencia dela) entre workers concorrentes.
 HOLD = 0.3
+N_MENSAGENS = 6
+
+# Prazo (tests/concurrency/prazos.py). Os jobs da mesma conversa rodam em serie
+# (ADR 0005), e cada um segura o lock por HOLD ou espera no maximo lock_timeout.
+PRAZO_SERIE = N_MENSAGENS * (HOLD + ESPERA_LOCK)
 
 
 def _criar_clinica(tenant_id):
@@ -130,6 +136,7 @@ def dois_tenants():
 # Etapa 4.3: mensagens seguidas da mesma conversa
 # ---------------------------------------------------------------------------
 
+@pytest.mark.timeout(limite_pytest(PRAZO_SERIE))
 def test_mensagens_seguidas_serializam_sem_duplicar(tenant):
     """Varios jobs da mesma conversa, com varios workers, nao se sobrepoem nem duplicam.
 
@@ -138,7 +145,7 @@ def test_mensagens_seguidas_serializam_sem_duplicar(tenant):
     cada job foi processado exatamente uma vez e as janelas de lock nao se
     sobrepoem.
     """
-    n_mensagens = 6
+    n_mensagens = N_MENSAGENS
     n_workers = 3
     ids_jobs = [_enfileirar_mensagem(tenant, CONTATO) for _ in range(n_mensagens)]
 
@@ -164,10 +171,9 @@ def test_mensagens_seguidas_serializam_sem_duplicar(tenant):
     threads = [threading.Thread(target=worker_loop) for _ in range(n_workers)]
     for t in threads:
         t.start()
-    for t in threads:
-        t.join(timeout=15)
+    vivas = juntar(threads, PRAZO_SERIE)
 
-    assert all(not t.is_alive() for t in threads), "worker travou (possivel deadlock)"
+    assert not vivas, ("worker travou (possivel deadlock)", vivas, intervalos)
 
     # Exatamente uma vez: cada job processado, nenhum repetido
     processados = [job_id for (job_id, _, _) in intervalos]

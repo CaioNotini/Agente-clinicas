@@ -20,10 +20,25 @@ from app.agenda.regras import AgendamentoDuplicado, HorarioIndisponivel
 from app.core.conversas import ConversaTravada, conversa_travada
 from app.db.database import SessionLocal
 from tests.cenarios_etapa5 import AGORA, agendamentos, engine_admin, limpar, semear
+from tests.concurrency.prazos import (
+    ESPERA_LOCK,
+    ESPERA_LIBERAR,
+    ESPERA_SINAL,
+    PIOR_CASO_GRAVACAO,
+    SEGURA_ANTES_DO_COMMIT,
+    juntar,
+    limite_pytest,
+)
 
 UTC = timezone.utc
 # Terca 02/03 10:00 em Sao Paulo
 INICIO = datetime(2027, 3, 2, 13, tzinfo=UTC)
+
+# Prazos (tests/concurrency/prazos.py). Varios contatos: largada, lock da conversa,
+# gravacao com as tentativas e a vencedora segurando o commit.
+PRAZO_VARIOS = ESPERA_SINAL + ESPERA_LOCK + PIOR_CASO_GRAVACAO + SEGURA_ANTES_DO_COMMIT
+# A e B: A chegou, B esperando na constraint, e a gravacao de B com as tentativas.
+PRAZO_A_B = ESPERA_LIBERAR + PIOR_CASO_GRAVACAO
 
 
 @pytest.fixture
@@ -43,7 +58,7 @@ def _criar(travada, equipe, inicio=INICIO):
     ).agendamento
 
 
-def _esperar_bloqueio(timeout=5.0):
+def _esperar_bloqueio(timeout=ESPERA_SINAL):
     """Espera ate alguma transacao estar parada esperando outra (lock nao concedido)."""
     limite = time.monotonic() + timeout
     while time.monotonic() < limite:
@@ -59,6 +74,7 @@ def _esperar_bloqueio(timeout=5.0):
     raise AssertionError("a segunda gravacao nao chegou a esperar a primeira")
 
 
+@pytest.mark.timeout(limite_pytest(PRAZO_VARIOS))
 def test_varios_contatos_pelo_mesmo_horario_so_um_vence(cenarios):
     equipe = cenarios["equipe"]
     total = 4
@@ -70,9 +86,9 @@ def test_varios_contatos_pelo_mesmo_horario_so_um_vence(cenarios):
         contato = f"(00) 90000-07{indice:02d}"
         try:
             with conversa_travada(equipe["tenant"], contato) as travada:
-                largada.wait(timeout=5)
+                largada.wait(timeout=ESPERA_SINAL)
                 _criar(travada, equipe)
-                time.sleep(0.2)
+                time.sleep(SEGURA_ANTES_DO_COMMIT)
             resultado = "aceito"
         except HorarioIndisponivel:
             resultado = "indisponivel"
@@ -84,9 +100,9 @@ def test_varios_contatos_pelo_mesmo_horario_so_um_vence(cenarios):
     threads = [threading.Thread(target=pedir, args=(i,)) for i in range(total)]
     for thread in threads:
         thread.start()
-    for thread in threads:
-        thread.join(timeout=15)
+    vivas = juntar(threads, PRAZO_VARIOS)
 
+    assert not vivas, (vivas, resultados)
     assert sorted(resultados) == ["aceito"] + ["indisponivel"] * (total - 1), resultados
     assert len(agendamentos(equipe["tenant"], status="agendado")) == 1
 
@@ -97,12 +113,13 @@ def _gravacao_a_segura(equipe, contato, pronto, liberar, erros):
         with conversa_travada(equipe["tenant"], contato) as travada:
             _criar(travada, equipe)
             pronto.set()
-            assert liberar.wait(timeout=10)
+            assert liberar.wait(timeout=ESPERA_LIBERAR)
     except Exception as erro:  # noqa: BLE001 - repassado para a thread principal
         erros.append(erro)
         pronto.set()
 
 
+@pytest.mark.timeout(limite_pytest(PRAZO_A_B))
 def test_23p01_vira_indisponivel_e_a_transacao_segue(cenarios):
     equipe = cenarios["equipe"]
     pronto, liberar, erros, saida_b = threading.Event(), threading.Event(), [], {}
@@ -111,7 +128,7 @@ def test_23p01_vira_indisponivel_e_a_transacao_segue(cenarios):
         args=(equipe, "(00) 90000-0801", pronto, liberar, erros),
     )
     thread_a.start()
-    assert pronto.wait(timeout=5)
+    assert pronto.wait(timeout=ESPERA_SINAL)
 
     def gravacao_b():
         try:
@@ -132,9 +149,9 @@ def test_23p01_vira_indisponivel_e_a_transacao_segue(cenarios):
     thread_b.start()
     _esperar_bloqueio()
     liberar.set()
-    thread_a.join(timeout=10)
-    thread_b.join(timeout=10)
+    vivas = juntar([thread_a, thread_b], PRAZO_A_B)
 
+    assert not vivas, (vivas, erros, saida_b)
     assert erros == [] and "erro" not in saida_b, (erros, saida_b)
     assert saida_b["primeira"] == "indisponivel"
     ativos = agendamentos(equipe["tenant"], status="agendado")
@@ -144,6 +161,7 @@ def test_23p01_vira_indisponivel_e_a_transacao_segue(cenarios):
     ]
 
 
+@pytest.mark.timeout(limite_pytest(PRAZO_A_B))
 def test_pedido_repetido_na_corrida_devolve_o_existente(cenarios):
     """Mesmo contato por fora da fila (sem o lock da conversa): o 23P01 devolve o existente.
 
@@ -156,7 +174,7 @@ def test_pedido_repetido_na_corrida_devolve_o_existente(cenarios):
         target=_gravacao_a_segura, args=(equipe, contato, pronto, liberar, erros)
     )
     thread_a.start()
-    assert pronto.wait(timeout=5)
+    assert pronto.wait(timeout=ESPERA_SINAL)
 
     def gravacao_b_sem_lock():
         session = SessionLocal()
@@ -184,15 +202,16 @@ def test_pedido_repetido_na_corrida_devolve_o_existente(cenarios):
     thread_b.start()
     _esperar_bloqueio()
     liberar.set()
-    thread_a.join(timeout=10)
-    thread_b.join(timeout=10)
+    vivas = juntar([thread_a, thread_b], PRAZO_A_B)
 
+    assert not vivas, (vivas, erros, saida_b)
     assert erros == [] and "erro" not in saida_b, (erros, saida_b)
     ativos = agendamentos(equipe["tenant"], status="agendado")
     assert len(ativos) == 1
     assert saida_b["agendamento"].id == ativos[0].id
 
 
+@pytest.mark.timeout(limite_pytest(PRAZO_A_B))
 def test_remarcacao_na_corrida_para_horario_do_contato_e_duplicado(cenarios):
     """Remarcacao que recebe 23P01 contra um agendamento do proprio contato (C7).
 
@@ -211,7 +230,7 @@ def test_remarcacao_na_corrida_para_horario_do_contato_e_duplicado(cenarios):
         target=_gravacao_a_segura, args=(equipe, contato, pronto, liberar, erros)
     )
     thread_a.start()
-    assert pronto.wait(timeout=5)
+    assert pronto.wait(timeout=ESPERA_SINAL)
 
     def remarcacao_b_sem_lock():
         session = SessionLocal()
@@ -244,9 +263,9 @@ def test_remarcacao_na_corrida_para_horario_do_contato_e_duplicado(cenarios):
     thread_b.start()
     _esperar_bloqueio()
     liberar.set()
-    thread_a.join(timeout=10)
-    thread_b.join(timeout=10)
+    vivas = juntar([thread_a, thread_b], PRAZO_A_B)
 
+    assert not vivas, (vivas, erros, saida_b)
     assert erros == [] and "erro" not in saida_b, (erros, saida_b)
     assert saida_b["resultado"] == "duplicado"
     linhas = {linha.id: linha for linha in agendamentos(equipe["tenant"])}

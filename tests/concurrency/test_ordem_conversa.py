@@ -20,6 +20,7 @@ from app.config import MIGRATION_DATABASE_URL
 from app.core.conversas import conversa_travada
 from app.jobs.queue import gravar_e_enfileirar
 from app.jobs.worker import finalizar_job, processar_um, reivindicar_job
+from tests.concurrency.prazos import ESPERA_LOCK, juntar, limite_pytest
 
 engine_admin = create_engine(MIGRATION_DATABASE_URL)
 
@@ -31,6 +32,9 @@ LENTO = 0.4
 
 # Limite de cada teste com threads, abaixo do timeout de 10 s do pytest.ini
 PRAZO = 8.0
+# Prazo do juntar (tests/concurrency/prazos.py): o laco para em PRAZO, mas um job ja
+# capturado ainda termina, segurando o lock por LENTO ou esperando lock_timeout.
+PRAZO_JUNTAR = PRAZO + LENTO + ESPERA_LOCK
 
 
 def _criar_clinica(tenant_id):
@@ -137,9 +141,8 @@ def _rodar_workers(n_workers, processamento, ids):
     threads = [threading.Thread(target=laco) for _ in range(n_workers)]
     for t in threads:
         t.start()
-    for t in threads:
-        t.join(timeout=PRAZO + 1)
-    assert all(not t.is_alive() for t in threads), "worker nao terminou no prazo"
+    vivas = juntar(threads, PRAZO_JUNTAR)
+    assert not vivas, ("worker nao terminou no prazo", vivas, _estados(ids))
     assert terminados(), f"jobs nao terminaram: {_estados(ids)}"
 
 
@@ -160,6 +163,7 @@ def test_job_seguinte_nao_e_capturado_enquanto_anterior_processa(tenant):
     assert capturado_b is not None and capturado_b.id == j2
 
 
+@pytest.mark.timeout(limite_pytest(PRAZO_JUNTAR))
 def test_dois_workers_processamento_lento_respeita_ordem(tenant):
     """Dois workers, mesma conversa, processamento lento: um job por vez, na ordem."""
     ids = [_enfileirar(tenant) for _ in range(3)]
@@ -181,6 +185,7 @@ def test_dois_workers_processamento_lento_respeita_ordem(tenant):
     assert all(estado == ("done", 1) for estado in _estados(ids).values())
 
 
+@pytest.mark.timeout(limite_pytest(PRAZO_JUNTAR))
 def test_falha_da_mensagem_1_nao_deixa_a_2_e_a_3_passarem(tenant, monkeypatch):
     """A 1 falha na primeira tentativa: a 2 e a 3 so rodam depois que a 1 conclui."""
     # O teste prova a ordem, nao o atraso do backoff (tarefa 6.4). Sem backoff o
@@ -206,6 +211,7 @@ def test_falha_da_mensagem_1_nao_deixa_a_2_e_a_3_passarem(tenant, monkeypatch):
     assert _estados(ids) == {j1: ("done", 2), j2: ("done", 1), j3: ("done", 1)}
 
 
+@pytest.mark.timeout(limite_pytest(PRAZO_JUNTAR))
 def test_mensagem_que_esgota_tentativas_vai_para_dead_e_libera_as_seguintes(tenant, monkeypatch):
     """A 1 falha sempre: vai para dead apos max_attempts, e so entao a 2 e a 3 rodam, em ordem."""
     # Ordem sob retry, sem depender do atraso do backoff (tarefa 6.4): base 0 deixa
