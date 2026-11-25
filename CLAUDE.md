@@ -52,6 +52,7 @@ Para cada tarefa, nesta ordem:
 19. Testes de isolamento usam somente `app_clinicas` para verificar o RLS. Dados de teste podem ser criados com `cnotini`, mas a verificação não.
 20. Toda tabela nova com `tenant_id` recebe a policy `isolamento_tenant`, entra em `TABELAS_TENANT` e é coberta pelos testes de isolamento antes de ser considerada concluída.
 21. Não criar, alterar ou remover roles, policies, grants nem o RLS sem pedido explícito. Essas mudanças exigem ADR. Exceção: a policy `isolamento_tenant` em tabela nova, prevista na regra 20, já está autorizada e não exige ADR novo.
+22. Testes ou ações que envolvam a utilização da API da IA por trás do agente (Anthropic) devem ser aprovados pelo desenvolvedor tanto em sua implementação, quando eu seu teste. Essas aprovações devem vim junto de uma explicação do que e do porque implementar esse teste.
 
 ## Testes
 
