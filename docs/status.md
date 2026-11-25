@@ -1,7 +1,7 @@
 ```
 Papel: Índice de entrada único da documentação e registro do estado verificado mais recente.
 Entrada: docs/status.md
-Relaciona-se com: etapas.md, estudo.md, arquitetura.md, principios.md, decisions/README.md, diagnosticos/2026-11-18-plano-rodada3.md, diagnosticos/2026-11-24-rodada4.md, diagnosticos/2026-11-25-rodada5.md
+Relaciona-se com: etapas.md, estudo.md, arquitetura.md, principios.md, decisions/README.md, diagnosticos/2026-11-18-plano-rodada3.md, diagnosticos/2026-11-24-rodada4.md, diagnosticos/2026-11-25-rodada5.md, diagnosticos/2026-11-25-instabilidade-concorrencia.md
 ```
 
 # Status do projeto
@@ -83,7 +83,7 @@ O que o código garante hoje, com a decisão de cada ponto:
 - 17: derivar o `tenant_id` do número de destino no webhook (A7), e envio de WhatsApp como job novo, com idempotência no provedor (ADR 0008).
 - 15: `ON DELETE SET NULL (mensagem_id)` exige Postgres 15 ou mais. Conferir a versão do Supabase na tarefa 15.2 (C11 da rodada 4).
 
-- Antes da 7.1: instabilidade nos testes, observada em 2026-11-25 e ainda não investigada. `tests/concurrency/test_servico_concorrencia.py`, rodado sozinho, estourou os 10 s do `pytest-timeout` em 2 de 3 tentativas, também sem as mudanças da rodada 5. A primeira execução da suíte com o banco recém-ligado teve 93 falhas, e as execuções seguintes passaram. A CI passa. A causa precisa ser diagnosticada antes da 7.2, que põe a chamada ao LLM dentro do lock da conversa.
+- Antes da 7.1: instabilidade nos testes, diagnosticada em 2026-11-25 ([diagnóstico](./diagnosticos/2026-11-25-instabilidade-concorrencia.md)) e ainda não corrigida. O estouro de `test_servico_concorrencia.py` é um deadlock real entre 3 ou mais gravações no mesmo horário, e o `40P01` sai do serviço como erro cru depois das 3 tentativas. As 93 falhas da primeira execução foram de senha das roles divergente do ambiente. As correções propostas (P1 a P3, uma delas com ADR) aguardam aprovação do desenvolvedor.
 
 **Ambiguidades de documentação**
 
@@ -100,6 +100,7 @@ O que o código garante hoje, com a decisão de cada ponto:
 - [`fake_clinic/clinica.md`](./fake_clinic/clinica.md), [`fake_clinic/FAQ.md`](./fake_clinic/FAQ.md) e [`fake_clinic/pergs_bloqueadas.md`](./fake_clinic/pergs_bloqueadas.md): base fictícia (clínica com equipe e recepção)
 - [`fake_clinic/consultorio_solo.md`](./fake_clinic/consultorio_solo.md): segundo tenant fictício, consultório de um profissional só, sem recepção, para testar as regras da etapa 5 nos dois cenários
 - [`diagnosticos/2026-11-25-rodada5.md`](./diagnosticos/2026-11-25-rodada5.md): diagnóstico da rodada 5, inspeção de 2026-11-25
+- [`diagnosticos/2026-11-25-instabilidade-concorrencia.md`](./diagnosticos/2026-11-25-instabilidade-concorrencia.md): diagnóstico da instabilidade dos testes de concorrência, com a proposta de correção
 - [`diagnosticos/2026-11-24-rodada4.md`](./diagnosticos/2026-11-24-rodada4.md): diagnóstico da rodada 4, inspeção de 2026-11-24
 - [`diagnosticos/2026-11-18-plano-rodada3.md`](./diagnosticos/2026-11-18-plano-rodada3.md): plano de trabalho da rodada 3, com os itens ainda abertos
 - [`diagnosticos/2026-10-13-rodada1.md`](./diagnosticos/2026-10-13-rodada1.md) e [`diagnosticos/2026-10-27-rodada2.md`](./diagnosticos/2026-10-27-rodada2.md): diagnósticos históricos
