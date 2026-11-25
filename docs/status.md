@@ -27,6 +27,7 @@ Etapa 6 (concluída), resumo: chamada ao modelo por uma interface única. `LLMCl
 - `pytest -m llm_real -v`, rodado pelo desenvolvedor em 2026-11-25 = `4 passed`, 490 deselected. Única execução paga, aprovada na implementação e no teste (regra 22). Não roda na CI.
 - O banco local estava em `c3d8e5a1f297` e foi levado ao head `a5587f532a88` com `alembic upgrade head` em 2026-11-25. O `alembic check` passou ("No new upgrade operations detected.").
 - CI mais recente verificada: run `45678396796`, commit `706dce9`, sucesso. Log lido: o ciclo de migrations (`upgrade head`, `downgrade base`, `upgrade head`) aplica a `a5587f532a88`, o `alembic check` não acusa diferença, [`scripts/verificar_pks.sql`](../scripts/verificar_pks.sql) confirma chave primária em todas as tabelas e o pytest dá `490 passed, 4 deselected`. Os commits dos blocos 1 a 4 da rodada 5 ainda não foram enviados ao GitHub e não têm CI.
+- Lock da agenda por profissional ([ADR 0011](./decisions/0011-lock-de-agenda-por-profissional.md)), em 2026-11-25: 4 contatos criando no mesmo horário e 4 remarcando para o mesmo horário, 20 execuções seguidas de cada, com processo novo, todas com 1 aceito e 3 `HorarioIndisponivel`, sem `40P01`. Sem o lock, a criação falhou em 5 de 20, e a remarcação passou 20 de 20, então só o teste de criação detecta a falta do lock.
 - Setup do zero só pelo [`README.md`](../README.md), num clone limpo, passou em 2026-11-20. A repetição fica com o desenvolvedor, na máquina local dele, e não é pendência do agente.
 - pylint, black e isort passam e reprovam a CI quando falham.
 - Prova por mutação da etapa 5, à mão e fora da suíte: sem RLS e sem o filtro explícito de tenant, os testes de isolamento do serviço e do handoff falham, o que confirma as duas barreiras. A segunda barreira da verificação de duplicata da fila tem teste próprio, `test_sem_rls_o_filtro_de_tenant_separa_colisao_de_duplicata` em [`test_dedupe_mensagens.py`](../tests/concurrency/test_dedupe_mensagens.py), que roda sem RLS pela conta de administração. Sem o tratamento de `ErroPermanente`, os testes do worker falham. Em 2026-11-25, sem `tenant_id = :t` na UPDATE de `finalizar_job`, só `test_finalizar_job_com_tenant_trocado_nao_altera_o_job` falha (B23), e o código foi restaurado.
@@ -42,6 +43,7 @@ O que o código garante hoje, com a decisão de cada ponto:
 - Transições de estado pelo grafo do [ADR 0003](./decisions/0003-grafo-de-transicoes.md).
 - Erro permanente (`ConfiguracaoInvalida`, `MisturaDeTenants`) leva o job a `dead` na primeira falha, com log estruturado de erro. O texto de exceções não vai ao paciente (seções 7 e 8.1 da [arquitetura](./arquitetura.md)).
 - O SDK da Anthropic só é criado em [`app/llm/fabrica.py`](../app/llm/fabrica.py), com `max_retries=0` e timeout de 60 s (5 s para a conexão), menor que o limite de órfão do job. Um teste confere os valores e varre `app/` atrás de outra criação do SDK ([ADR 0010](./decisions/0010-llmclient.md)).
+- Gravações de agendamento do mesmo profissional em fila, pelo lock de transação da agenda, sem deadlock entre inserções concorrentes. `40P01` residual e `55P03` viram `ConcorrenciaNaAgenda`, sem erro cru do banco ([ADR 0011](./decisions/0011-lock-de-agenda-por-profissional.md)).
 - Senhas das roles aplicadas por script, sem passo manual ([ADR 0006](./decisions/0006-provisionamento-de-roles.md)).
 
 ## Decisões recentes
@@ -56,6 +58,7 @@ O que o código garante hoje, com a decisão de cada ponto:
 
 - 7.3: `MENSAGEM_URGENCIA` em [`fixas.py`](../app/mensagens/fixas.py) ainda não cita o CVV (188), decidido na seção 8.3 da [arquitetura](./arquitetura.md#83-escopo-clínico).
 - 7.2: implementar a saída estruturada no `AnthropicClient` e remover `EsquemaSaidaNaoSuportado`. Hoje `esquema_saida` preenchido levanta esse erro, que leva o job a `dead` ([ADR 0010](./decisions/0010-llmclient.md)).
+- 7.2: nenhuma chamada ao LLM entre o INSERT de agendamento e o commit da transação. O lock da agenda do profissional fica até o commit, e a espera dos outros pacientes passaria do `lock_timeout` ([ADR 0011](./decisions/0011-lock-de-agenda-por-profissional.md)). O texto de resposta é gerado antes da gravação ou depois do commit.
 - 7.2: chamar `criar_cliente_llm` no `main()` do worker e injetar o cliente no processamento ([ADR 0010](./decisions/0010-llmclient.md)). Hoje a função existe, mas nada a chama.
 - 9: o timeout do LLM é por chamada. Um job com várias chamadas (classificação e function calling) pode somar mais que os 300 s do limite de órfão ([ADR 0010](./decisions/0010-llmclient.md)).
 - 8: o [`FAQ.md`](./fake_clinic/FAQ.md) não tem mais entradas clínicas. O critério "trechos marcados como bloqueado nunca são retornados" vai precisar de um trecho clínico de teste criado na própria etapa 8.
@@ -68,7 +71,7 @@ O que o código garante hoje, com a decisão de cada ponto:
 - 7: o `mensagem_id` passado ao serviço deve vir do job. A FK garante a mesma clínica, mas não o mesmo contato.
 - LGPD: a exclusão do titular que apague agendamentos precisa tratar antes os handoffs que apontam para eles (FK `NO ACTION`).
 - Outros erros permanentes, como o payload sem `contato_telefone`, ainda consomem as 3 tentativas.
-- `55P03` (lock_timeout de 5 s esperando outra transação na verificação da constraint de conflito) sobe sem tratamento próprio, e o job tenta de novo.
+- `55P03` na gravação de agendamento, seja esperando o lock da agenda do profissional, seja na verificação da constraint, vira `ConcorrenciaNaAgenda` desde 2026-11-25 ([ADR 0011](./decisions/0011-lock-de-agenda-por-profissional.md)), e o job tenta de novo. O `55P03` do lock da conversa continua sem tratamento próprio.
 - 7: reduzir os grants de `app_clinicas`, só com pedido explícito e ADR (item A4 do [plano](./diagnosticos/2026-11-18-plano-rodada3.md)). O UPDATE em `jobs` precisa continuar, pelo ADR 0008. Os grants de `worker_jobs` também são mais amplos que o uso, como registra o ADR 0002.
 - 7: ao reduzir os grants (A4), o teste de FKs pelo catálogo passa a usar `pg_attribute` em vez de `information_schema.columns`, que só lista colunas com privilégio da role (B15 da [rodada 4](./diagnosticos/2026-11-24-rodada4.md)).
 - 7: usar `validar_transicao` em toda escrita de estado (C4).
@@ -83,7 +86,7 @@ O que o código garante hoje, com a decisão de cada ponto:
 - 17: derivar o `tenant_id` do número de destino no webhook (A7), e envio de WhatsApp como job novo, com idempotência no provedor (ADR 0008).
 - 15: `ON DELETE SET NULL (mensagem_id)` exige Postgres 15 ou mais. Conferir a versão do Supabase na tarefa 15.2 (C11 da rodada 4).
 
-- Antes da 7.1: instabilidade nos testes, diagnosticada em 2026-11-25 ([diagnóstico](./diagnosticos/2026-11-25-instabilidade-concorrencia.md)) e ainda não corrigida. O estouro de `test_servico_concorrencia.py` é um deadlock real entre 3 ou mais gravações no mesmo horário, e o `40P01` sai do serviço como erro cru depois das 3 tentativas. As 93 falhas da primeira execução foram de senha das roles divergente do ambiente. Em 2026-11-25 foi aplicada a P2: as esperas dos testes de concorrência seguem os prazos de [`prazos.py`](../tests/concurrency/prazos.py), e o teste do deadlock falha pela asserção, sem o pytest matar o processo. A P1 (serializar as gravações por profissional, com ADR) foi aprovada e é a próxima tarefa. Até ela, `test_varios_contatos_pelo_mesmo_horario_so_um_vence` falha em cerca de metade das execuções com processo novo no Windows.
+- Antes da 7.1: instabilidade nos testes, diagnosticada em 2026-11-25 ([diagnóstico](./diagnosticos/2026-11-25-instabilidade-concorrencia.md)) e corrigida pela P2 e pela P1. O estouro de `test_servico_concorrencia.py` é um deadlock real entre 3 ou mais gravações no mesmo horário, e o `40P01` sai do serviço como erro cru depois das 3 tentativas. As 93 falhas da primeira execução foram de senha das roles divergente do ambiente. Em 2026-11-25 foi aplicada a P2: as esperas dos testes de concorrência seguem os prazos de [`prazos.py`](../tests/concurrency/prazos.py), e o teste do deadlock falha pela asserção, sem o pytest matar o processo. Em 2026-11-25 foi aplicada a P1: lock da agenda por profissional ([ADR 0011](./decisions/0011-lock-de-agenda-por-profissional.md)). Criação e remarcação concorrentes com 4 contatos passaram 20 de 20 vezes com processo novo, sem `40P01`. A instabilidade está resolvida.
 
 **Ambiguidades de documentação**
 
@@ -96,7 +99,7 @@ O que o código garante hoje, com a decisão de cada ponto:
 - [`estudo.md`](./estudo.md): escopo, premissas e orçamento do estudo
 - [`arquitetura.md`](./arquitetura.md): decisões técnicas, modelo de dados e questões em aberto
 - [`principios.md`](./principios.md): princípios e como são verificados
-- [`decisions/README.md`](./decisions/README.md): ADRs 0001 a 0010
+- [`decisions/README.md`](./decisions/README.md): ADRs 0001 a 0011
 - [`fake_clinic/clinica.md`](./fake_clinic/clinica.md), [`fake_clinic/FAQ.md`](./fake_clinic/FAQ.md) e [`fake_clinic/pergs_bloqueadas.md`](./fake_clinic/pergs_bloqueadas.md): base fictícia (clínica com equipe e recepção)
 - [`fake_clinic/consultorio_solo.md`](./fake_clinic/consultorio_solo.md): segundo tenant fictício, consultório de um profissional só, sem recepção, para testar as regras da etapa 5 nos dois cenários
 - [`diagnosticos/2026-11-25-rodada5.md`](./diagnosticos/2026-11-25-rodada5.md): diagnóstico da rodada 5, inspeção de 2026-11-25

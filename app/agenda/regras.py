@@ -64,6 +64,15 @@ class HorarioIndisponivel(RegraViolada):
     """
 
 
+class ConcorrenciaNaAgenda(Exception):
+    """A gravacao nao conseguiu a vez na agenda do profissional (ADR 0011).
+
+    Um 40P01 que sobrou depois das tentativas, ou um 55P03 na espera do lock da
+    agenda. O horario pode estar livre, entao nao e HorarioIndisponivel. E
+    transitorio: nao herda de ErroPermanente, e o job tenta de novo com backoff.
+    """
+
+
 class AgendamentoDuplicado(RegraViolada):
     """O contato ja tem outro agendamento ativo que se sobrepoe ao intervalo.
 

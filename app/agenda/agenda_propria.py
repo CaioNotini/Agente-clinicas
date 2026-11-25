@@ -9,6 +9,10 @@ O insert fixa o tenant_id com current_setting('app.tenant_id'), entao a linha cr
 sempre pertence ao tenant da sessao, e a policy de isolamento valida o WITH CHECK.
 Leituras e o cancelamento so alcancam linhas do proprio tenant: a policy restringe,
 e o filtro explicito de tenant_id e a segunda barreira (ADR 0002).
+
+Antes do insert, criar pega o lock da agenda do profissional (ADR 0011). Ele
+serializa as gravacoes do mesmo profissional e evita o deadlock entre insercoes
+concorrentes na constraint de exclusao, que continua sendo a barreira do conflito.
 """
 from datetime import date, datetime, time, timedelta
 from typing import Optional
@@ -60,6 +64,24 @@ def _validar_intervalo(inicio: datetime, fim: datetime) -> None:
         raise ValueError("fim precisa ser depois de inicio")
 
 
+def _travar_agenda(session, profissional_id: int) -> None:
+    """Lock de transacao da agenda do profissional, ate o commit (ADR 0011).
+
+    Chave: hash do tenant da sessao e o id do profissional. O ::uuid faz a chamada
+    falhar sem tenant na sessao, inclusive quando o setting ficou vazio de uma
+    transacao anterior na mesma conexao. Dentro de um SAVEPOINT desfeito o lock e
+    solto junto com a linha. Depois deste ponto, nenhuma chamada lenta (como o LLM)
+    pode acontecer antes do commit, porque a agenda do profissional fica parada.
+    """
+    session.execute(
+        text(
+            "SELECT pg_advisory_xact_lock("
+            "hashtext(current_setting('app.tenant_id')::uuid::text), :prof)"
+        ),
+        {"prof": profissional_id},
+    )
+
+
 class AgendaPropria(AgendaProvider):
     def criar(
         self,
@@ -72,6 +94,7 @@ class AgendaPropria(AgendaProvider):
         fim: datetime,
     ) -> Agendamento:
         _validar_intervalo(inicio, fim)
+        _travar_agenda(session, profissional_id)
         # tenant_id vem do proprio setting da sessao, nunca de um parametro do cliente
         linha = session.execute(
             text(

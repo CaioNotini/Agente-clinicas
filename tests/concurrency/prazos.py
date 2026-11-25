@@ -41,9 +41,10 @@ ESPERA_LOCK = LOCK_TIMEOUT_MS / 1000
 # quem grava sem lock_timeout ate o banco abortar um ciclo.
 DEADLOCK_TIMEOUT = 1.0
 
-# Pior caso de uma gravacao pelo servico: cada tentativa espera no maximo o
-# lock_timeout, e o 40P01 tenta de novo ate TENTATIVAS_DEADLOCK.
-PIOR_CASO_GRAVACAO = TENTATIVAS_DEADLOCK * ESPERA_LOCK
+# Pior caso de uma gravacao pelo servico: a espera pelo lock da agenda do
+# profissional (ADR 0011) e cada tentativa da insercao, todas limitadas pelo
+# lock_timeout. O 40P01 tenta de novo ate TENTATIVAS_DEADLOCK.
+PIOR_CASO_GRAVACAO = (1 + TENTATIVAS_DEADLOCK) * ESPERA_LOCK
 
 # Tempo que a gravacao vencedora segura a transacao antes do commit, para as
 # outras chegarem a constraint enquanto ela esta aberta.

@@ -3,12 +3,10 @@
 As duas sessoes app_clinicas inserem o mesmo horario do mesmo profissional antes
 de qualquer commit. Sem a constraint EXCLUDE, as duas seriam gravadas.
 
-A perdedora e rejeitada de duas formas, observadas em 2026-11-18:
-- 23P01 (exclusion_violation), quando ela espera a outra confirmar e depois
-  encontra o conflito.
-- 40P01 (deadlock_detected), quando as duas ja inseriram no indice gist e cada
-  uma espera a tupla ainda nao confirmada da outra. O Postgres aborta uma delas.
-O ADR 0004 so preve o 23P01. A divergencia esta registrada em docs/status.md.
+A perdedora e rejeitada com 23P01 (exclusion_violation): ela espera o lock da
+agenda do profissional (ADR 0011), e quando a outra confirma, encontra o conflito.
+Antes do lock, tambem podia receber 40P01, quando as duas ja tinham inserido no
+indice gist e cada uma esperava a tupla da outra.
 
 Usa o cenario e a sessao dos testes de integracao de AgendaPropria, com os dados
 de apoio criados e removidos pela conta de administracao.
@@ -39,7 +37,7 @@ INICIO = datetime(2027, 5, 3, 14, 0, tzinfo=timezone.utc)
 FIM = datetime(2027, 5, 3, 14, 30, tzinfo=timezone.utc)
 
 # Codigos com que a gravacao perdedora pode ser rejeitada (ver docstring)
-REJEICOES_ESPERADAS = {"23P01", "40P01"}
+REJEICOES_ESPERADAS = {"23P01"}
 
 # Tempo que cada transacao fica aberta depois do insert, para a outra inserir antes do commit
 ESPERA_ANTES_DO_COMMIT = 0.5

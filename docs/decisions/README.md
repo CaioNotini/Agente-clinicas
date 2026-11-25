@@ -20,6 +20,7 @@ Este diretório registra decisões tomadas durante a implementação que ainda n
 - [0008: Conclusão atômica do job](./0008-conclusao-atomica-do-job.md)
 - [0009: Agendamento e handoff da etapa 5 sem presumir recepção](./0009-agendamento-handoff-etapa5.md)
 - [0010: Contrato do LLMClient e SDK da Anthropic na versão 2026-10-21 da API](./0010-llmclient.md)
+- [0011: Lock de agenda por profissional](./0011-lock-de-agenda-por-profissional.md)
 
 ## Convenção de nomes
 

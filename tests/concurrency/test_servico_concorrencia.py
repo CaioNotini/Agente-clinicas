@@ -66,7 +66,7 @@ def _esperar_bloqueio(timeout=ESPERA_SINAL):
             if conexao.execute(
                 text(
                     "SELECT count(*) FROM pg_locks "
-                    "WHERE NOT granted AND locktype = 'transactionid'"
+                    "WHERE NOT granted AND locktype IN ('transactionid', 'advisory')"
                 )
             ).scalar():
                 return
@@ -105,6 +105,94 @@ def test_varios_contatos_pelo_mesmo_horario_so_um_vence(cenarios):
     assert not vivas, (vivas, resultados)
     assert sorted(resultados) == ["aceito"] + ["indisponivel"] * (total - 1), resultados
     assert len(agendamentos(equipe["tenant"], status="agendado")) == 1
+
+
+# Sexta 05/03 em Sao Paulo, 10:00 a 11:30: fora da janela de 48 h a partir de AGORA
+INICIOS_ANTIGOS = [datetime(2027, 3, 5, 13, tzinfo=UTC) + timedelta(minutes=30 * i) for i in range(4)]
+
+
+@pytest.mark.timeout(limite_pytest(PRAZO_VARIOS))
+def test_varios_contatos_remarcando_para_o_mesmo_horario_so_um_vence(cenarios):
+    """Remarcacao concorrente (ADR 0011): cada contato tem a propria consulta e todos
+    pedem o mesmo novo horario. So um remarca, os outros recebem HorarioIndisponivel
+    e as consultas antigas deles continuam agendadas."""
+    equipe = cenarios["equipe"]
+    total = len(INICIOS_ANTIGOS)
+    contatos = [f"(00) 90000-09{indice:02d}" for indice in range(total)]
+    antigos = {}
+    for contato, inicio in zip(contatos, INICIOS_ANTIGOS):
+        with conversa_travada(equipe["tenant"], contato) as travada:
+            antigos[contato] = _criar(travada, equipe, inicio).id
+
+    largada = threading.Barrier(total)
+    resultados = {}
+    trava = threading.Lock()
+
+    def remarcar(contato):
+        try:
+            with conversa_travada(equipe["tenant"], contato) as travada:
+                largada.wait(timeout=ESPERA_SINAL)
+                resultado = servico.remarcar(
+                    travada, antigos[contato], novo_inicio=INICIO, agora=AGORA
+                ).situacao
+                time.sleep(SEGURA_ANTES_DO_COMMIT)
+        except HorarioIndisponivel:
+            resultado = "indisponivel"
+        except Exception as erro:  # noqa: BLE001 - registrado para a assercao mostrar
+            resultado = f"{type(erro).__name__}: {getattr(getattr(erro, 'orig', None), 'pgcode', '')}"
+        with trava:
+            resultados[contato] = resultado
+
+    threads = [threading.Thread(target=remarcar, args=(c,)) for c in contatos]
+    for thread in threads:
+        thread.start()
+    vivas = juntar(threads, PRAZO_VARIOS)
+
+    assert not vivas, (vivas, resultados)
+    assert sorted(resultados.values()) == sorted(
+        [servico.REMARCADO] + ["indisponivel"] * (total - 1)
+    ), resultados
+    linhas = {linha.id: linha for linha in agendamentos(equipe["tenant"])}
+    for contato, situacao in resultados.items():
+        esperado = "cancelado" if situacao == servico.REMARCADO else "agendado"
+        assert linhas[antigos[contato]].status == esperado, (contato, resultados)
+    novos = [
+        linha
+        for linha in agendamentos(equipe["tenant"], status="agendado")
+        if linha.inicio == INICIO
+    ]
+    assert len(novos) == 1
+
+
+@pytest.mark.timeout(limite_pytest(PRAZO_A_B))
+def test_lock_de_um_profissional_nao_bloqueia_outro(cenarios):
+    """A segura o lock da agenda de prof. B grava o mesmo horario com prof2 sem esperar."""
+    equipe = cenarios["equipe"]
+    pronto, liberar, erros = threading.Event(), threading.Event(), []
+    thread_a = threading.Thread(
+        target=_gravacao_a_segura,
+        args=(equipe, "(00) 90000-0805", pronto, liberar, erros),
+    )
+    thread_a.start()
+    try:
+        assert pronto.wait(timeout=ESPERA_SINAL)
+        # Com lock por clinica, B esperaria A ate o lock_timeout e falharia
+        with conversa_travada(equipe["tenant"], "(00) 90000-0806") as travada:
+            outro = servico.criar(
+                travada,
+                profissional_id=equipe["prof2"],
+                servico_id=equipe["serv"],
+                inicio=INICIO,
+                agora=AGORA,
+            ).agendamento
+        assert thread_a.is_alive(), "A deveria continuar segurando o lock"
+    finally:
+        liberar.set()
+    vivas = juntar([thread_a], PRAZO_A_B)
+
+    assert not vivas and erros == [], (vivas, erros)
+    assert outro.profissional_id == equipe["prof2"]
+    assert len(agendamentos(equipe["tenant"], status="agendado")) == 2
 
 
 def _gravacao_a_segura(equipe, contato, pronto, liberar, erros):

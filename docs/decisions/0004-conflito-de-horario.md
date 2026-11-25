@@ -1,7 +1,7 @@
 ```
 Papel: registra como o conflito de horario de agendamentos e garantido e por que inicio e fim usam timestamptz.
 Entrada: docs/status.md
-Relaciona-se com: ../arquitetura.md (secao 7, modelo de dados), ../etapas.md (etapa 5), ../../app/db/models.py, ../../migrations/versions/b131d6ee6471_cria_tabela_agendamentos.py, ../../tests/isolation/test_isolation_rls.py
+Relaciona-se com: ../arquitetura.md (secao 7, modelo de dados), ../etapas.md (etapa 5), ../../app/db/models.py, ../../migrations/versions/b131d6ee6471_cria_tabela_agendamentos.py, ../../tests/isolation/test_isolation_rls.py, 0011-lock-de-agenda-por-profissional.md
 ```
 
 # 0004: Conflito de horario de agendamentos
@@ -37,7 +37,7 @@ Uma constraint no banco não depende da ordem de execução nem de a aplicação
 - A imagem do banco precisa ter `btree_gist`. Confirmado na imagem `pgvector/pgvector:pg15` usada no Docker local e no CI. A migration habilita a extensão antes de criar a constraint.
 - Implementado na tarefa 5.3, em [`servico.py`](../../app/agenda/servico.py): a inserção de agendamento roda dentro de um SAVEPOINT, porque o `23P01` e o `40P01` abortam a transação corrente. Os dois códigos têm tratamento diferente:
   - `23P01` é conflito de fato. O código relê sob RLS: se o conflitante for do mesmo paciente, profissional e início, devolve o existente (idempotência na corrida). Caso contrário, levanta `HorarioIndisponivel`. A mesma idempotência vale na verificação prévia, antes de gravar: o pedido repetido devolve o existente nos dois caminhos.
-  - `40P01` é deadlock, não indisponibilidade. O horário pode estar livre, porque a outra transação ainda pode ser desfeita. A operação é tentada de novo, até 3 vezes no total, e só um `23P01` na nova tentativa vira `HorarioIndisponivel`. Se as 3 derem `40P01`, o erro sobe e o job segue o caminho normal de nova tentativa do worker.
+  - `40P01` é deadlock, não indisponibilidade. O horário pode estar livre, porque a outra transação ainda pode ser desfeita. A operação é tentada de novo, até 3 vezes no total, e só um `23P01` na nova tentativa vira `HorarioIndisponivel`. Desde o [ADR 0011](./0011-lock-de-agenda-por-profissional.md), o lock da agenda do profissional evita esse deadlock, e um `40P01` que sobrar depois das 3 tentativas vira `ConcorrenciaNaAgenda`, que é transitório. O erro cru do banco não sobe mais.
 - Agendamentos cancelados não entram no conflito, porque a constraint é restrita a `status = 'agendado'`. Remarcar marca o antigo como cancelado antes de criar o novo, na mesma transação.
 - Na remarcação, o pedido repetido não vale. A regra fica na seção 7 da [arquitetura](../arquitetura.md#7-modelo-de-dados).
 - A tabela tem RLS, FORCE e policy `isolamento_tenant`, está em `TABELAS_TENANT` e é coberta pelos testes de isolamento, como exige o CLAUDE.md. A escrita cruzada no teste de isolamento usa dados válidos e exige `match="row-level security"`, para a policy ser a única barreira.
@@ -45,4 +45,4 @@ Uma constraint no banco não depende da ordem de execução nem de a aplicação
 
 ## Status
 
-Aceita. Revisada em 2026-11-18: o conflito concorrente também chega como `40P01`, e a tradução dos erros fica marcada como planejada para a 5.3. Revisada em 2026-11-23: só o `23P01` vira `HorarioIndisponivel`, e o `40P01` leva a uma nova tentativa. A função pura de conflito passa a existir na tarefa 5.2, e o fuso deixa de estar em aberto. Na 5.3, o SAVEPOINT e a tradução passam a estar implementados, e o pedido repetido devolve o existente também na verificação prévia.
+Aceita. Revisada em 2026-11-18: o conflito concorrente também chega como `40P01`, e a tradução dos erros fica marcada como planejada para a 5.3. Revisada em 2026-11-23: só o `23P01` vira `HorarioIndisponivel`, e o `40P01` leva a uma nova tentativa. A função pura de conflito passa a existir na tarefa 5.2, e o fuso deixa de estar em aberto. Na 5.3, o SAVEPOINT e a tradução passam a estar implementados, e o pedido repetido devolve o existente também na verificação prévia. Revisada em 2026-11-25: o [ADR 0011](./0011-lock-de-agenda-por-profissional.md) acrescenta o lock da agenda por profissional, que evita o deadlock entre inserções concorrentes. A constraint continua sendo a barreira do conflito.

@@ -12,10 +12,11 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import create_engine, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import NullPool
 
-from app.config import MIGRATION_DATABASE_URL
+from app.config import DATABASE_URL, MIGRATION_DATABASE_URL
 from app.db.database import SessionLocal
 from app.agenda.agenda_propria import AgendaPropria
 from app.agenda.base import (
@@ -358,3 +359,99 @@ def test_mesmo_horario_em_clinicas_diferentes_e_aceito(cenario, outro_cenario):
         _criar(session, profissional_a, servico_a, _horario(10), _horario(10, 30))
     with sessao_tenant(tenant_b) as session:
         _criar(session, profissional_b, servico_b, _horario(10), _horario(10, 30))
+
+
+# --- lock da agenda do profissional (ADR 0011) -------------------------------------
+
+_INICIO_LOCK = datetime(2030, 1, 7, 13, tzinfo=timezone.utc)
+
+
+def _locks_da_agenda(profissional_id, tenant=None):
+    """Advisory locks de dois inteiros concedidos para o profissional, vistos por fora.
+
+    Com tenant, conta so os locks cuja primeira chave e o hash desse tenant. O
+    classid e oid, sem sinal, entao o hash entra como os 32 bits sem sinal.
+    """
+    filtro_tenant = (
+        " AND classid::bigint = (hashtext(:t)::bigint & 4294967295)" if tenant else ""
+    )
+    with engine_admin.connect() as conexao:
+        return conexao.execute(
+            text(
+                "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' "
+                "AND objsubid = 2 AND objid = :prof AND granted" + filtro_tenant
+            ),
+            {"prof": profissional_id, "t": str(tenant) if tenant else None},
+        ).scalar()
+
+
+def _agendamentos_do_profissional(profissional_id):
+    with engine_admin.connect() as conexao:
+        return conexao.execute(
+            text("SELECT count(*) FROM agendamentos WHERE profissional_id = :p"),
+            {"p": profissional_id},
+        ).scalar()
+
+
+def _criar_em(session, profissional, servico):
+    return AgendaPropria().criar(
+        session,
+        profissional_id=profissional,
+        servico_id=servico,
+        contato_telefone=TELEFONE,
+        inicio=_INICIO_LOCK,
+        fim=_INICIO_LOCK + timedelta(minutes=30),
+    )
+
+
+def test_criar_segura_o_lock_da_agenda_ate_o_commit(cenario):
+    tenant, profissional, servico = cenario
+    assert _locks_da_agenda(profissional) == 0
+
+    with sessao_tenant(tenant) as session:
+        _criar_em(session, profissional, servico)
+        assert _locks_da_agenda(profissional) == 1
+        # A chave do lock leva o tenant da sessao, e nao uma constante (ADR 0011)
+        assert _locks_da_agenda(profissional, tenant=tenant) == 1
+
+    assert _locks_da_agenda(profissional) == 0
+
+
+def test_sem_tenant_em_conexao_nova_nao_pega_o_lock_nem_grava(cenario):
+    # Conexao app_clinicas que nunca definiu app.tenant_id: o setting nao existe.
+    _, profissional, servico = cenario
+    engine_novo = create_engine(DATABASE_URL, poolclass=NullPool)
+    try:
+        with engine_novo.connect() as conexao:
+            with pytest.raises(DBAPIError, match="app.tenant_id"):
+                _criar_em(conexao, profissional, servico)
+    finally:
+        engine_novo.dispose()
+    assert _locks_da_agenda(profissional) == 0
+    assert _agendamentos_do_profissional(profissional) == 0
+
+
+def test_sem_tenant_depois_de_transacao_com_tenant_nao_pega_o_lock_nem_grava(cenario):
+    # Na mesma conexao, o set_config local de uma transacao anterior deixa o setting
+    # vazio, e nao ausente. O ::uuid da chave faz a chamada falhar mesmo assim.
+    tenant, profissional, servico = cenario
+    engine_novo = create_engine(DATABASE_URL, poolclass=NullPool)
+    try:
+        with engine_novo.connect() as conexao:
+            with conexao.begin():
+                conexao.execute(
+                    text("SELECT set_config('app.tenant_id', :t, true)"),
+                    {"t": str(tenant)},
+                )
+            vazio = conexao.execute(
+                text("SELECT current_setting('app.tenant_id')")
+            ).scalar()
+            assert vazio == ""
+            conexao.rollback()
+            with pytest.raises(DBAPIError, match="uuid"):
+                _criar_em(conexao, profissional, servico)
+    finally:
+        engine_novo.dispose()
+    assert _locks_da_agenda(profissional) == 0
+    assert _agendamentos_do_profissional(profissional) == 0
+

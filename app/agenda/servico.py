@@ -14,8 +14,11 @@ confirmados juntos (ADR 0008).
 Insercao (ADR 0004): roda num SAVEPOINT. 23P01 relê a agenda e devolve o existente
 no pedido repetido, ou levanta HorarioIndisponivel. Na remarcacao o pedido repetido
 vira AgendamentoDuplicado, na verificacao previa e no 23P01. 40P01 e deadlock, nao
-indisponibilidade: volta ao SAVEPOINT e tenta de novo, ate TENTATIVAS_DEADLOCK. Em
-todos os erros tratados a transacao externa continua utilizavel.
+indisponibilidade: volta ao SAVEPOINT e tenta de novo, ate TENTATIVAS_DEADLOCK. Com o
+lock da agenda do profissional (ADR 0011) o deadlock nao deve mais acontecer. Um
+40P01 que sobrar, ou um 55P03 na espera do lock, vira ConcorrenciaNaAgenda, entao
+nenhum erro cru do banco chega ao chamador. Em todos os erros tratados a transacao
+externa continua utilizavel.
 
 Handoff (5.4): o pedido fora da janela com a politica handoff grava o handoff com o
 agendamento do contato. ConfiguracaoInvalida nao sobe: a operacao roda num
@@ -44,6 +47,7 @@ from app.agenda.regras import (
     CANCELAR_TARDIO,
     MOTIVO_CANCELAMENTO_FORA_DA_JANELA,
     AgendamentoDuplicado,
+    ConcorrenciaNaAgenda,
     ConfiguracaoInvalida,
     HorarioIndisponivel,
     RegrasClinica,
@@ -69,6 +73,7 @@ from app.handoff.abertura import (
 TENTATIVAS_DEADLOCK = 3
 _EXCLUSAO = "23P01"
 _DEADLOCK = "40P01"
+_LOCK_TIMEOUT = "55P03"
 
 # Situacoes devolvidas pelas operacoes
 CRIADO = "criado"
@@ -230,7 +235,8 @@ def _inserir_com_savepoint(session, agenda, campos: dict) -> Optional[Agendament
     """Grava num SAVEPOINT. Devolve None no 23P01, para o chamador reler a agenda.
 
     40P01 volta ao SAVEPOINT e tenta de novo. O Postgres solta os locks do trecho
-    desfeito. Esgotadas as tentativas, ou com outro erro, o erro sobe.
+    desfeito. O 40P01 esgotado e o 55P03 viram ConcorrenciaNaAgenda (ADR 0011).
+    Outro erro sobe como veio.
     """
     for tentativa in range(1, TENTATIVAS_DEADLOCK + 1):
         savepoint = session.begin_nested()
@@ -243,6 +249,11 @@ def _inserir_com_savepoint(session, agenda, campos: dict) -> Optional[Agendament
                 return None
             if codigo == _DEADLOCK and tentativa < TENTATIVAS_DEADLOCK:
                 continue
+            if codigo in (_DEADLOCK, _LOCK_TIMEOUT):
+                # Sem o texto do erro do banco, que repete os parametros do SQL
+                raise ConcorrenciaNaAgenda(
+                    f"agenda do profissional ocupada (SQLSTATE {codigo})"
+                ) from erro
             raise
         savepoint.commit()
         return novo
