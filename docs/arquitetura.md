@@ -1,12 +1,12 @@
 ```
 Papel: Fonte única das decisões técnicas (D-xx), modelo de dados e questões em aberto (Q-xx).
 Entrada: docs/status.md
-Relaciona-se com: estudo.md, etapas.md, decisions/0001-alembic.md, decisions/0002-contas-de-banco.md, status.md, guias_respostas/guia_respostas.md
+Relaciona-se com: estudo.md, etapas.md, decisions/0001-alembic.md, decisions/0002-contas-de-banco.md, decisions/0012-saida-da-classificacao.md, status.md, guias_respostas/guia_respostas.md
 ```
 
 # Arquitetura do MVP: agente de agendamento para clínicas via WhatsApp
 
-Novembro de 2026 · versão 2.2 · documento de referência para os sócios e para o desenvolvimento · alinhado ao plano de estudo v1.2 e às decisões do [guia de respostas](./guias_respostas/guia_respostas.md)
+Novembro de 2026 · versão 2.3 · documento de referência para os sócios e para o desenvolvimento · alinhado ao plano de estudo v1.2 e às decisões do [guia de respostas](./guias_respostas/guia_respostas.md)
 
 ---
 
@@ -47,7 +47,7 @@ Decisões com status **Travada** não são revisitadas sem nova versão deste do
 | D-06 | Fila de jobs em tabela PostgreSQL com `SKIP LOCKED` e deduplicação por `mensagens.id`                                                                                                                                                                           | Travada                                       | Celery + Redis: mais infraestrutura. Gatilho de migração: segunda instância da aplicação                                                                                                                       |
 | D-07 | Lock por conversa com `SELECT ... FOR UPDATE`                                                                                                                                                                                                                   | Travada                                       | Fila FIFO por conversa: mais complexa, sem ganho no volume de piloto                                                                                                                                           |
 | D-08 | Estado explícito em `conversas.estado_conversa`, com 5 estados                                                                                                                                                                                                  | Travada                                       | Estado inferido pelo LLM a cada mensagem: custo de tokens e ambiguidade                                                                                                                                        |
-| D-09 | Classificação em categoria fechada + score de confiança. Abaixo de 0,7 vira `ambiguo`                                                                                                                                                                           | Travada (threshold a calibrar, Q-06)          | Só rótulo sem confiança: não trata casos de fronteira                                                                                                                                                          |
+| D-09 | Classificação em categoria fechada + score de confiança na origem LLM. Dois limites: 0,5 para `urgencia` e `clinico_bloqueado` e 0,7 para as demais. Sem intenção acima do limite vira `ambiguo` ([ADR 0012](./decisions/0012-saida-da-classificacao.md)) | Travada (revista na versão 2.3, limites a calibrar, Q-06) | Só rótulo sem confiança: não trata casos de fronteira                                                                                                                                                          |
 | D-10 | `clinico_bloqueado` e `urgencia` respondem com mensagem fixa aprovada, nunca gerada                                                                                                                                                                             | Travada                                       | Resposta gerada pelo LLM: risco de recusa parcialmente clínica e de variação não auditável                                                                                                                     |
 | D-11 | Ferramentas determinísticas. A lista de ferramentas é a barreira de escopo                                                                                                                                                                                      | Travada                                       | Modelo livre com regras no prompt: não é verificável                                                                                                                                                           |
 | D-12 | Orquestração própria sobre a API do modelo, sem LangChain                                                                                                                                                                                                       | Travada                                       | LangChain/LangGraph: abstrações difíceis de depurar, dependências pesadas e quebras entre versões                                                                                                              |
@@ -252,7 +252,7 @@ SELECT ... FROM jobs ... FOR UPDATE SKIP LOCKED                  trava do job, s
  ↓
 SELECT estado_conversa FROM conversas WHERE id = ... FOR UPDATE  trava da conversa
  ↓
-Classificação: lista de intenções, cada uma com categoria + confiança (decisão 23)
+Classificação: lista de intenções, cada uma com categoria + confiança (decisão 23, ADR 0012)
  ↓
 Há urgencia na lista? → mensagem de segurança fixa (192 ou pronto-socorro, incondicional, e CVV 188) + log_auditoria,
  │                      mesmo com human_mode = true (decisão 13). A conversa vai para escalada, a ação pendente
@@ -265,7 +265,7 @@ Há clinico_bloqueado na lista? → tratado primeiro, com uma das duas respostas
  ↓
 Demais intenções
  ├─ administrativo / agendamento  → RAG / function calling. Sem informação na base → oferece handoff ou seguir no automático (decisão 2)
- └─ ambiguo, ou confiança < 0,7   → 1 esclarecimento → handoff se persistir
+ └─ ambiguo (nenhuma intenção acima do limite) → 1 esclarecimento → handoff se persistir
  ↓
 Channel.send_text(...)
  ↓
@@ -274,9 +274,9 @@ UPDATE estado_conversa; COMMIT; job = done
 
 As duas travas resolvem problemas diferentes. `SKIP LOCKED` impede que dois workers peguem o mesmo job. `FOR UPDATE` na conversa impede que duas mensagens da mesma conversa sejam processadas ao mesmo tempo.
 
-**Prioridade entre intenções (decisão 23, refinada em 2026-11-26).** A classificação devolve uma lista de intenções, e o agente responde a todas, com duas exceções. Com `urgencia` na lista, só a mensagem de urgência sai. Com `clinico_bloqueado`, ele é tratado primeiro e as demais intenções são respondidas depois. Com as duas na lista, vale a urgência. O formato da saída fica no ADR da saída da classificação, que vem antes da tarefa 7.2.
+**Prioridade entre intenções (decisão 23, refinada em 2026-11-26).** A classificação devolve uma lista de intenções, e o agente responde a todas, com duas exceções. Com `urgencia` na lista, só a mensagem de urgência sai. Com `clinico_bloqueado`, ele é tratado primeiro e as demais intenções são respondidas depois. Com as duas na lista, vale a urgência. O formato da saída, os limites e a regra de prioridade estão no [ADR 0012](./decisions/0012-saida-da-classificacao.md).
 
-**Urgência antes do `human_mode` (decisão 13).** A urgência é verificada antes do `human_mode`, então a mensagem fixa sai mesmo numa conversa assumida por um humano. Depois dela, a conversa vai para `escalada` e a ação pendente é descartada. Numa conversa que já está em `escalada`, o estado continua como está. Numa conversa `encerrada`, ela passa por `idle` e depois por `escalada`. As duas arestas já existem no grafo do [ADR 0003](./decisions/0003-grafo-de-transicoes.md), que não muda. A consequência é o custo: verificar a urgência antes do `human_mode` faz toda mensagem de conversa assumida passar pela classificação. A direção para o ADR da saída da classificação é que, em conversa com `human_mode` ativo, a verificação de urgência use só a regra da tarefa 7.1, sem chamada ao LLM.
+**Urgência antes do `human_mode` (decisão 13).** A urgência é verificada antes do `human_mode`, então a mensagem fixa sai mesmo numa conversa assumida por um humano. Depois dela, a conversa vai para `escalada` e a ação pendente é descartada. Numa conversa que já está em `escalada`, o estado continua como está. Numa conversa `encerrada`, ela passa por `idle` e depois por `escalada`. As duas arestas já existem no grafo do [ADR 0003](./decisions/0003-grafo-de-transicoes.md), que não muda. A consequência é o custo: verificar a urgência antes do `human_mode` faz toda mensagem de conversa assumida passar pela classificação. Em conversa com `human_mode` ativo, a verificação de urgência usa só a regra da tarefa 7.1, sem chamada ao LLM ([ADR 0012](./decisions/0012-saida-da-classificacao.md)).
 
 **Agrupamento de mensagens (planejado, decisões 10 e 14).** Mensagens seguidas do mesmo contato serão agrupadas e tratadas como uma só. A espera é de 4 segundos, renovada a cada mensagem nova, com teto de 12 segundos. Mensagem com palavra de urgência não espera. A espera usa o `run_at` do job e mantém a ordem do [ADR 0005](./decisions/0005-ordem-por-conversa.md). Os valores são iniciais e serão ajustados com dados da etapa 10 e do piloto. O mecanismo ainda não existe. O ADR do agrupamento vem antes da etapa 9 e revê os ADRs 0005 e 0008. A palavra de urgência que dispensa a espera depende da regra da tarefa 7.1, e num áudio ela só aparece depois da transcrição.
 
@@ -333,7 +333,7 @@ O envio concorrente com `asyncio.gather` resolve o gargalo de volume. Celery ent
 Três camadas, em ordem:
 
 1. **Ferramentas.** O modelo só pode chamar as quatro ferramentas da seção 7. Não existe ferramenta para responder sobre saúde.
-2. **Classificação com confiança.** Antes de gerar texto livre, a mensagem é classificada. Confiança abaixo de 0,7 vira `ambiguo`. A assimetria é deliberada: na dúvida, o sistema escala em vez de responder.
+2. **Classificação com confiança.** Antes de gerar texto livre, a mensagem é classificada. Cada categoria tem um limite de confiança, mais baixo para `urgencia` e `clinico_bloqueado`, e sem intenção acima do limite a mensagem vira `ambiguo` ([ADR 0012](./decisions/0012-saida-da-classificacao.md)). A assimetria é deliberada: na dúvida, o sistema escala em vez de responder.
 3. **Mensagens fixas.** `clinico_bloqueado` e `urgencia` respondem com texto aprovado previamente, nunca gerado pelo LLM, idealmente revisado por alguém com formação clínica antes do piloto.
 
 As mensagens fixas são três: a de urgência, a de clínico bloqueado e a de oferta de atendimento (decisões 22 e 26).
@@ -343,7 +343,7 @@ As mensagens fixas são três: a de urgência, a de clínico bloqueado e a de of
 - A pergunta que espera uma resposta clínica, como "posso tomar esse remédio?", recebe a mensagem fixa de clínico bloqueado e abre o handoff.
 - O sintoma de quem espera atendimento, como "estou com dor nas costas", recebe a oferta de atendimento. O paciente escolhe entre o handoff para o profissional e seguir com o agendamento. O handoff só abre se ele aceitar.
 - Sintomas odontológicos como inchaço com febre recebem a oferta de atendimento, não a mensagem de urgência, para a urgência não ser acionada em excesso. Dificuldade para respirar continua sendo urgência pela regra geral. A linha OD-02b do guia é a primeira a passar por revisão clínica, na tarefa 20.5.
-- As duas respostas gravam `log_auditoria`, porque a categoria continua `clinico_bloqueado`. Como a classificação separa os dois casos fica no ADR da saída da classificação.
+- As duas respostas gravam `log_auditoria`, porque a categoria continua `clinico_bloqueado`. A classificação separa os dois casos pelo subtipo `pergunta` ou `sintoma` ([ADR 0012](./decisions/0012-saida-da-classificacao.md)).
 
 A de `clinico_bloqueado` não cita recepção e não promete resposta imediata, porque num consultório solo pode não haver ninguém monitorando o handoff na hora. Exemplo:
 
@@ -487,7 +487,7 @@ As questões Q-01 a Q-19 não bloqueiam as etapas 0 a 5. As questões Q-20 a Q-2
 | Q-03 | Compatibilidade do pooler do Supabase (modo transação) com `SELECT ... FOR UPDATE` e `SKIP LOCKED`                                                                                                                                                                                                                                              | Etapa 15 (migração para o Supabase)     |
 | Q-04 | Disponibilidade da restrição de IP de origem no plano Pro                                                                                                                                                                                                                                                                                       | Etapa 15                                |
 | Q-05 | Número de tentativas de esclarecimento antes de abrir handoff (hoje: 1)                                                                                                                                                                                                                                                                         | Etapa 10                                |
-| Q-06 | Threshold de confiança (hoje: 0,7)                                                                                                                                                                                                                                                                                                              | Etapa 10                                |
+| Q-06 | Limites de confiança (hoje: 0,5 para `urgencia` e `clinico_bloqueado` e 0,7 para as demais, [ADR 0012](./decisions/0012-saida-da-classificacao.md))                                                                                                                                                                                                                                                                                                              | Etapa 10                                |
 | Q-07 | Rigor da classificação clínica: 100% LLM, 100% regra ou híbrida                                                                                                                                                                                                                                                                                 | Etapa 10                                |
 | Q-08 | Conjunto de tentativas de desvio (perguntas disfarçadas de hipotéticas, "é só curiosidade")                                                                                                                                                                                                                                                     | Etapa 10                                |
 | Q-09 | Revisão clínica das mensagens fixas                                                                                                                                                                                                                                                                                                             | Etapa 20                                |

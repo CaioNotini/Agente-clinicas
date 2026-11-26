@@ -49,6 +49,8 @@ O que o código garante hoje, com a decisão de cada ponto:
 
 ## Decisões recentes
 
+- 2026-11-26: [ADR 0012](./decisions/0012-saida-da-classificacao.md), saída da classificação, antes da 7.1. A regra e o LLM devolvem a mesma lista de intenções, com a origem. O LLM só rotula, e uma função pura decide. Limites de 0,5 para `urgencia` e `clinico_bloqueado` e 0,7 para as demais, a calibrar na etapa 10. Subtipo `pergunta` ou `sintoma` em `clinico_bloqueado`, com `sintoma` quando incerto. A D-09 foi revista na versão 2.3 da [arquitetura](./arquitetura.md). Nada disso está implementado ainda.
+
 - 2026-11-26: os documentos canônicos foram alinhados às 26 decisões aprovadas do [guia de respostas](./guias_respostas/guia_respostas.md), antes da 7.1. A decisão 23 foi refinada: com `urgencia` na lista de intenções, só a mensagem de urgência sai. A urgência é verificada antes do `human_mode`. Sem resposta ao lembrete, só o T-1 ganha um segundo envio, sem handoff. O destinatário do handoff passa a ser por profissional, com um destinatário padrão. Detalhes nas seções 8.1 a 8.4 e na Q-25 da [arquitetura](./arquitetura.md) (versão 2.2) e na revisão de 2026-11-26 do [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md). Nada disso está implementado ainda.
 
 - 2026-11-25, etapa 0: existe uma única mensagem fixa de `urgencia`, que cobre todo risco imediato à vida, inclusive o pensamento de autolesão. Ela orienta o 192 ou o pronto-socorro de forma incondicional e cita o CVV (188), sem subcategoria de urgência. Perguntas administrativas nunca são `clinico_bloqueado`. Sem a informação na base, o agente oferece handoff ou seguir no automático. Regras na seção 8.3 da [arquitetura](./arquitetura.md#83-escopo-clínico).
@@ -59,8 +61,9 @@ O que o código garante hoje, com a decisão de cada ponto:
 
 **Previstas para etapas futuras**
 
-- Antes da 7.2: ADR da saída da classificação. Define a lista de intenções com prioridade, como a saída separa as duas respostas de `clinico_bloqueado` e a verificação de urgência com `human_mode` ativo só pela regra da 7.1, sem LLM (seções 8.1 e 8.3 da [arquitetura](./arquitetura.md)).
+- 7.2: avaliar se a regra roda sempre antes do LLM, como primeira linha de defesa. Se ela detectar `urgencia`, a mensagem sai sem esperar o LLM, o que também cobre a falha ou o timeout da chamada ([ADR 0012](./decisions/0012-saida-da-classificacao.md)).
 - 7.3: três mensagens fixas em [`fixas.py`](../app/mensagens/fixas.py): urgência com o 192 ou o pronto-socorro e o CVV (188), clínico bloqueado e oferta de atendimento (seção 8.3 da [arquitetura](./arquitetura.md#83-escopo-clínico)). Hoje `MENSAGEM_URGENCIA` não cita o CVV e a oferta de atendimento não existe.
+- 7.3: o texto da oferta de atendimento precisa soar natural também quando a mensagem era uma pergunta, porque o subtipo incerto de `clinico_bloqueado` cai em `sintoma`. Exemplo: "essa questão precisa ser avaliada pelo(a) {profissional}" ([ADR 0012](./decisions/0012-saida-da-classificacao.md)).
 - Antes da 8: ADR de configuração e informações administrativas da clínica, com os itens da aba Configuração da clínica do [guia](./guias_respostas/guia_respostas.md), incluindo a regra de que dado com coluna própria não entra no RAG.
 - Antes da 8: migration de `servicos.preco` de `Float` para `Numeric(10,2)`.
 - Antes da 9: ADR da ação pendente da conversa, com a expiração de 15 minutos (decisão 11 do guia).
@@ -112,7 +115,7 @@ O que o código garante hoje, com a decisão de cada ponto:
 - [`arquitetura.md`](./arquitetura.md): decisões técnicas, modelo de dados e questões em aberto
 - [`principios.md`](./principios.md): princípios e como são verificados
 - [`guias_respostas/guia_respostas.md`](./guias_respostas/guia_respostas.md): guia de respostas do agente, com as 26 decisões aprovadas e a planilha [`guia_respostas.xlsx`](./guias_respostas/guia_respostas.xlsx)
-- [`decisions/README.md`](./decisions/README.md): ADRs 0001 a 0011
+- [`decisions/README.md`](./decisions/README.md): ADRs 0001 a 0012
 - [`fake_clinic/clinica.md`](./fake_clinic/clinica.md), [`fake_clinic/FAQ.md`](./fake_clinic/FAQ.md) e [`fake_clinic/pergs_bloqueadas.md`](./fake_clinic/pergs_bloqueadas.md): base fictícia (clínica com equipe e recepção)
 - [`fake_clinic/consultorio_solo.md`](./fake_clinic/consultorio_solo.md): segundo tenant fictício, consultório de um profissional só, sem recepção, para testar as regras da etapa 5 nos dois cenários
 - [`diagnosticos/2026-11-25-rodada5.md`](./diagnosticos/2026-11-25-rodada5.md): diagnóstico da rodada 5, inspeção de 2026-11-25

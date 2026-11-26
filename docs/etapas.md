@@ -182,18 +182,19 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
 ### Etapa 7: classificação, mensagens fixas e auditoria
 
 - **Depende de:** etapas 5 e 6.
-- **Base:** D-09, D-10, D-25, seções 8.1 e 8.3 da arquitetura e as decisões 13, 22, 23, 25 e 26 do [guia de respostas](./guias_respostas/guia_respostas.md).
+- **Base:** D-09, D-10, D-25, seções 8.1 e 8.3 da arquitetura, o [ADR 0012](./decisions/0012-saida-da-classificacao.md) e as decisões 13, 22, 23, 25 e 26 do [guia de respostas](./guias_respostas/guia_respostas.md).
 - **Objetivo:** classificar cada mensagem com confiança, responder a casos clínicos e de urgência com texto fixo, e registrar tudo na auditoria.
 - **Tarefas:**
-  - 7.1 classificação por regra, como baseline.
-  - 7.2 classificação com LLM, retornando uma lista de intenções, cada uma com categoria e confiança. Com `urgencia` na lista, só a mensagem de urgência sai. `clinico_bloqueado` é tratado antes das demais intenções e tem as duas respostas da seção 8.3 da arquitetura. O ADR da saída da classificação vem antes desta tarefa.
+  - 7.1 classificação por regra, como baseline, com a saída do [ADR 0012](./decisions/0012-saida-da-classificacao.md).
+  - 7.2 classificação com LLM, retornando uma lista de intenções, cada uma com categoria e confiança. Com `urgencia` na lista, só a mensagem de urgência sai. `clinico_bloqueado` é tratado antes das demais intenções e tem as duas respostas da seção 8.3 da arquitetura. A saída é a mesma da 7.1, definida no [ADR 0012](./decisions/0012-saida-da-classificacao.md), que vem antes das duas tarefas.
   - 7.3 mensagens fixas de urgência, clínico bloqueado e oferta de atendimento. A de urgência traz o 192 ou o pronto-socorro e o CVV (188). Nesta tarefa entram os textos padrão. O texto por clínica depende do ADR de configuração da clínica.
   - 7.4 registro em `log_auditoria`.
   - 7.5 urgência verificada antes do `human_mode`, com a transição da conversa para `escalada` (seção 8.1 da arquitetura). Executada depois da 7.3 e da 7.4, porque usa a mensagem fixa e a auditoria. O descarte da ação pendente fica na tarefa 9.5, porque a ação pendente só existe a partir da etapa 9.
 - **Código:** `app/classification/`, `app/auditoria/`, `tests/unit/`.
 - **Critério de pronto:**
   - toda mensagem `clinico_bloqueado` ou `urgencia` gera registro de auditoria.
-  - confiança abaixo de 0,7 resulta em `ambiguo`.
+  - confiança abaixo do limite da categoria resulta no descarte da intenção, e a lista vazia resulta em `ambiguo` ([ADR 0012](./decisions/0012-saida-da-classificacao.md)).
+  - a função de prioridade é testada com todas as combinações de categorias do ADR 0012.
   - os casos da lista de perguntas bloqueadas são testados.
   - com `urgencia` na lista de intenções, só a mensagem de urgência sai, e `clinico_bloqueado` é tratado antes das demais intenções.
   - a mensagem de urgência sai também numa conversa com `human_mode` ativo, verificado por teste.
