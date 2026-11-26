@@ -9,6 +9,7 @@ As dataclasses validam a forma na construcao. Uma saida do LLM fora do formato
 de clinico_bloqueado) levanta IntencaoInvalida, e a 7.2 trata isso como saida
 invalida, descartada por inteiro.
 """
+
 from dataclasses import dataclass
 from typing import Optional
 
@@ -123,10 +124,30 @@ def aplicar_limites(resultado: ResultadoClassificacao) -> tuple[Intencao, ...]:
     )
 
 
+# Ordem de tratamento sem urgencia (ADR 0012): clinico_bloqueado primeiro, depois
+# administrativo, que se resolve no mesmo turno, e por ultimo agendamento, que abre
+# um fluxo de varios turnos. A prioridade e um dado, nao uma cadeia de ifs.
+ORDEM_SEM_URGENCIA = (CLINICO_BLOQUEADO, ADMINISTRATIVO, AGENDAMENTO)
+
+
 def decidir(intencoes: tuple[Intencao, ...]) -> Decisao:
     """Ordena as intencoes aceitas pela regra de prioridade do ADR 0012.
 
-    Implementada pelo desenvolvedor na tarefa 7.1. Contrato em
-    tests/unit/test_prioridade.py.
+    1. Com urgencia, so ela: as demais sao descartadas (decisoes 13 e 23).
+    2. Sem urgencia, a ordem de ORDEM_SEM_URGENCIA, qualquer que seja a ordem de
+       entrada, porque o LLM devolve as intencoes em qualquer ordem.
+    3. Nenhuma intencao: Decisao vazia, que e ambiguo.
+
+    Funcao pura: nao altera a entrada e devolve as mesmas instancias de Intencao,
+    com subtipo e confianca intactos.
     """
-    raise NotImplementedError("decidir: implementacao do desenvolvedor (tarefa 7.1)")
+    categorias = [intencao.categoria for intencao in intencoes]
+    if len(categorias) != len(set(categorias)):
+        raise IntencaoInvalida("categoria repetida na lista de intencoes")
+
+    for intencao in intencoes:
+        if intencao.categoria == URGENCIA:
+            return Decisao((intencao,))
+
+    posicao = {categoria: indice for indice, categoria in enumerate(ORDEM_SEM_URGENCIA)}
+    return Decisao(tuple(sorted(intencoes, key=lambda i: posicao[i.categoria])))
