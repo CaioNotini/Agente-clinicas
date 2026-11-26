@@ -65,6 +65,8 @@ A classificação devolve uma lista de intenções rotuladas, com a origem, e um
 
 ### Subtipo de `clinico_bloqueado`
 
+Revisto em 2026-11-26: nenhum subtipo abre o handoff sem a escolha do paciente (ver Revisão de 2026-11-26).
+
 - `pergunta`: a mensagem espera uma resposta clínica ("posso tomar esse remédio?"). Recebe a mensagem fixa de clínico bloqueado e abre o handoff.
 - `sintoma`: a mensagem espera atendimento ("estou com dor nas costas"). Recebe a oferta de atendimento: o paciente escolhe entre o handoff e seguir com o agendamento (decisão 22).
 - Quando o subtipo é incerto, o padrão é `sintoma`, tanto no LLM quanto na regra. A regra também preenche o subtipo.
@@ -101,7 +103,7 @@ Estes pontos ficam registrados aqui e não são implementados por este ADR:
 - **Saída inválida cai na regra.** A regra está sempre disponível e reconhece as urgências que ela já cobre, o que evita perder uma urgência por causa de uma saída malformada.
 - **Dois limites.** Pelo princípio da assimetria, errar para o lado de `urgencia` e `clinico_bloqueado` custa menos que deixá-las passar. O valor de 0,5 é um ponto inicial conservador, escolhido entre acionar a urgência demais, o que a decisão 25 quer evitar e que leva a conversa para `escalada`, e acionar de menos. A confiança declarada pelo LLM não é uma probabilidade calibrada, então o valor não tem leitura probabilística. Ele é calibrado na etapa 10.
 - **Ordem `administrativo` antes de `agendamento`.** A dúvida administrativa se resolve no mesmo turno. O agendamento abre um fluxo de vários turnos (`coletando_info`). Com ele no fim da resposta, a próxima mensagem do paciente responde à pergunta do agendamento.
-- **Subtipo com padrão `sintoma`.** Nos dois subtipos o agente nunca responde conteúdo clínico, então a proteção principal é a mesma. A diferença é só se o handoff é forçado ou oferecido. Handoff forçado em excesso sobrecarrega o profissional ou a secretaria, principalmente nos perfis sem secretaria (P3 e P4), que são os mais frequentes.
+- **Subtipo com padrão `sintoma`.** Nos dois subtipos o agente nunca responde conteúdo clínico, então a proteção principal é a mesma. A diferença é só se o handoff é forçado ou oferecido. Handoff forçado em excesso sobrecarrega o profissional ou a secretaria, principalmente nos perfis sem secretaria (P3 e P4), que são os mais frequentes. Motivo substituído na Revisão de 2026-11-26.
 - **Confiança vazia na regra.** A regra não estima incerteza. Um valor fixo seria inventado e entraria na calibração como se fosse medida. Para o baseline, as métricas são precisão e recall. A calibração vale só para o LLM.
 
 ## Consequências
@@ -112,9 +114,35 @@ Estes pontos ficam registrados aqui e não são implementados por este ADR:
 - Na 7.2, o esquema de saída estruturada do LLM segue este formato. A validação da saída é do código, não do modelo.
 - O erro de subtipo não aparece no recall por categoria. Ele precisa de métrica própria na etapa 10.
 - Pendência da 7.2, sem decisão agora: avaliar se a regra roda sempre antes do LLM, como primeira linha de defesa. Se a regra detectar `urgencia`, a mensagem sai sem esperar o LLM. Isso também cobriria a falha ou o timeout da chamada ao LLM, que hoje levaria o job a novas tentativas com a urgência esperando ([ADR 0010](./0010-llmclient.md)).
-- Pendência da 7.3: o texto da oferta de atendimento precisa soar natural também quando a mensagem era uma pergunta, já que o subtipo incerto cai em `sintoma`. Exemplo: "essa questão precisa ser avaliada pelo(a) {profissional}".
+- Pendência da 7.3: o texto da oferta de atendimento precisa soar natural também quando a mensagem era uma pergunta, já que o subtipo incerto cai em `sintoma`. Exemplo: "essa questão precisa ser avaliada pelo(a) {profissional}". Resolvida na Revisão de 2026-11-26.
 - Se uma categoria nova entrar, a função de prioridade, a ordem fixa e os testes das combinações precisam ser revistos, junto com uma nova versão da D-09.
+
+## Revisão de 2026-11-26 (decisões 13, 22 e 27 do guia de respostas)
+
+### Contexto
+
+A decisão 27 do [guia de respostas](../guias_respostas/guia_respostas.md) diz que nenhum handoff é aberto sem a confirmação do paciente. A decisão 22 foi revista: os dois subtipos de `clinico_bloqueado` oferecem falar com o profissional ou seguir com o agendamento, e a diferença fica só na mensagem. A decisão 13 foi revista: depois da urgência, o agente oferece avisar o profissional.
+
+### Decisão
+
+- `pergunta` recebe a mensagem fixa de clínico bloqueado, que diz que o agente não pode fornecer essa informação e oferece falar com o profissional ou seguir com o agendamento. Ela não abre o handoff sem a escolha do paciente. Substitui "abre o handoff" na seção Subtipo.
+- `sintoma` recebe a oferta de atendimento, que não fala em informação negada e só oferece as duas opções.
+- O padrão continua `sintoma` quando o subtipo é incerto, com outro motivo (ver abaixo).
+- Na regra de prioridade, o tratamento da urgência inclui a oferta de avisar o profissional, em mensagem separada depois da mensagem de urgência, exceto com `human_mode` ativo ou em conversa já em `escalada`. A oferta faz parte do tratamento da urgência e não é outra intenção. As demais intenções continuam descartadas. A oferta entra na tarefa 9.5. Na tarefa 7.5, só a mensagem de urgência sai.
+
+### Alternativas consideradas
+
+- Trocar o padrão para `pergunta`. Descartada: um sintoma tratado como pergunta receberia "não posso fornecer essa informação" sem ter pedido nada.
+
+### Justificativa
+
+O motivo original do padrão `sintoma`, evitar o handoff forçado em excesso, deixou de valer, porque nenhum subtipo força o handoff. O padrão fica por outro motivo: o texto do sintoma não nega uma informação que o paciente não pediu e soa natural também para uma pergunta ("Essa questão precisa ser avaliada pelo(a) {profissional}"). Nos dois subtipos o agente nunca responde conteúdo clínico e faz a mesma oferta.
+
+### Consequências
+
+- A pendência da 7.3 sobre o texto da oferta soar natural numa pergunta está resolvida pelo texto novo da aba Mensagens fixas do guia.
+- O erro de subtipo continua medido à parte na etapa 10, agora como erro só de texto, sem efeito no handoff.
 
 ## Status
 
-Aceita
+Aceita. Revista em 2026-11-26 (decisões 13, 22 e 27 do guia de respostas)

@@ -31,7 +31,7 @@ A planilha [`guia_respostas.xlsx`](./guia_respostas.xlsx) reúne, para cada situ
 
 ## Fonte da verdade
 
-- Os textos padrão das mensagens fixas valem como estão em `app/mensagens/fixas.py`, e cada clínica pode definir o próprio texto (decisão 26). A aba Mensagens fixas é só uma cópia de referência e não altera o agente.
+- Os textos padrão das quatro mensagens fixas (urgência, oferta de aviso depois da urgência, clínico bloqueado e oferta de atendimento) valem como estão em `app/mensagens/fixas.py`, e cada clínica pode definir o próprio texto (decisão 26). A aba Mensagens fixas é só uma cópia de referência e não altera o agente.
 - Regras de negócio, como antecedência, janela de cancelamento e destinatário do handoff, ficam no código e no banco. A planilha descreve o comportamento esperado, não o define (regra 4 do [CLAUDE.md](../../CLAUDE.md)).
 - A coluna `fonte` aponta para onde o dado fica no produto. No estudo, os dados da clínica P1 vêm de [`clinica.md`](../fake_clinic/clinica.md).
 - O perfil de uma clínica não é um campo no banco. Ele resulta dos dados dela: quantas especialidades tem, quantos profissionais fazem cada serviço e quem recebe o handoff.
@@ -43,7 +43,7 @@ A planilha [`guia_respostas.xlsx`](./guia_respostas.xlsx) reúne, para cada situ
 Decididas pelo desenvolvedor em novembro de 2026. As que mudam o código ainda não foram implementadas e estão nas pendências do [status.md](../status.md).
 
 1. Cancelar e remarcar pedem confirmação do paciente, citando data, hora e profissional, antes de executar.
-2. Pergunta administrativa sem informação na base não abre handoff direto. O agente oferece o encaminhamento e o paciente escolhe. Isso não vale para `clinico_bloqueado` e `urgencia`, que continuam incondicionais.
+2. Pergunta administrativa sem informação na base não abre handoff direto. O agente oferece o encaminhamento e o paciente escolhe. Na urgência, só a orientação de emergência é incondicional (decisão 27).
 3. O agente só pergunta o profissional quando mais de um faz o serviço, e só pergunta a especialidade quando a clínica tem mais de uma.
 4. Perguntar qual especialidade procurar a partir de um sintoma é agendamento, não `clinico_bloqueado`. O agente apresenta as especialidades com a descrição da clínica e não deduz a especialidade pelo sintoma.
 5. Nas clínicas sem secretaria, o handoff vai para o profissional da consulta do paciente, ou para aquele com quem ele quer marcar.
@@ -54,7 +54,7 @@ Decididas pelo desenvolvedor em novembro de 2026. As que mudam o código ainda n
 10. Mensagens seguidas do mesmo contato são agrupadas e tratadas como uma só.
 11. A confirmação de uma ação pendente (agendar, cancelar, remarcar ou abrir handoff) expira em 15 minutos. Depois disso, o agente pede a confirmação de novo.
 12. Quando o paciente não tem consulta nem preferência de profissional, o handoff vai para um destinatário padrão definido previamente pela clínica.
-13. Depois de uma urgência, a conversa vai para `escalada` e a ação pendente é descartada. A classificação de urgência é verificada antes do `human_mode`, então a mensagem fixa sai mesmo numa conversa já assumida por um humano.
+13. Depois de uma urgência, a ação pendente anterior é descartada e a conversa passa a aguardar a resposta à oferta de avisar o profissional (decisão 27). Se o paciente aceitar, vai para `escalada`. Se recusar ou a oferta expirar, volta para `idle`. A classificação de urgência é verificada antes do `human_mode`, então a mensagem fixa sai mesmo numa conversa já assumida por um humano, sem a oferta. Revista em 2026-11-26 pela decisão 27.
 14. O agrupamento de mensagens seguidas espera 4 segundos, renovados a cada mensagem nova, com teto de 12 segundos. Mensagem com palavra de urgência não espera. A espera usa o `run_at` do job e mantém a ordem do [ADR 0005](../decisions/0005-ordem-por-conversa.md). Os valores são iniciais e serão ajustados com dados da etapa 10 e do piloto.
 15. A transcrição usa Whisper local no estudo e Amazon Transcribe no MVP. No MVP, a política de opt-out do AWS Organizations precisa estar ativa antes do primeiro áudio de paciente. O áudio é apagado logo depois da transcrição, e a transcrição é tratada como dado de saúde.
 16. Quando a transcrição falha, o agente pede que o paciente escreva a mensagem, de preferência, ou que reenvie o áudio.
@@ -63,11 +63,12 @@ Decididas pelo desenvolvedor em novembro de 2026. As que mudam o código ainda n
 19. Sem vaga no período pedido, o agente oferece, na mesma mensagem, primeiro os próximos horários do profissional de interesse e depois a opção de outro profissional, sem citar os horários dele.
 20. Duração e preço da primeira consulta e do retorno são configurados pela clínica.
 21. Saudação e pedido de humano não viram categorias próprias.
-22. Dentro de `clinico_bloqueado`, a pergunta que espera uma resposta clínica ("posso tomar esse remédio?") recebe a mensagem fixa e abre o handoff. O sintoma de quem espera atendimento ("estou com dor nas costas") recebe a oferta de atendimento: o paciente escolhe entre o handoff para o profissional e seguir com o agendamento.
+22. Dentro de `clinico_bloqueado`, os dois subtipos oferecem ao paciente falar com o profissional ou seguir com o agendamento, e nenhum abre o handoff sem a escolha dele. A diferença está só na mensagem: na pergunta que espera uma resposta clínica ("posso tomar esse remédio?"), o agente diz que não pode fornecer essa informação. No sintoma de quem espera atendimento ("estou com dor nas costas"), ele só oferece as duas opções. Revista em 2026-11-26 pela decisão 27.
 23. A classificação devolve uma lista de intenções, e o agente responde a todas. Se houver `urgencia` ou `clinico_bloqueado` entre elas, essa intenção vence e é tratada primeiro.
 24. Na terceira repetição da mesma intenção sem solução, o agente oferece o handoff. A contagem é feita pelo código.
 25. Sintomas odontológicos como inchaço com febre recebem a oferta de atendimento, não a mensagem de urgência, para a urgência não ser acionada em excesso. Dificuldade para respirar continua sendo urgência pela regra geral.
 26. Os textos das mensagens fixas podem ser definidos por cada clínica. Quando ela não definir, vale um texto padrão por tipo. Os detalhes serão definidos mais adiante.
+27. Nenhum handoff é aberto sem a confirmação do paciente. Na urgência, a orientação de emergência sai sempre e na hora, e depois o agente oferece avisar o profissional, sem oferecer agendamento. No `clinico_bloqueado`, no `ambiguo` depois de um esclarecimento sem sucesso, na pergunta administrativa sem informação e no cancelamento fora da janela com política de handoff, o agente oferece o encaminhamento. As exceções são duas: o paciente que pede para falar com uma pessoa, cujo pedido já é a confirmação, e o erro interno de configuração da clínica, que é um alerta de operação e não uma transferência do paciente.
 
 ## Questões pendentes
 

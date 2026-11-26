@@ -187,9 +187,9 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
 - **Tarefas:**
   - 7.1 classificação por regra, como baseline, com a saída do [ADR 0012](./decisions/0012-saida-da-classificacao.md).
   - 7.2 classificação com LLM, retornando uma lista de intenções, cada uma com categoria e confiança. Com `urgencia` na lista, só a mensagem de urgência sai. `clinico_bloqueado` é tratado antes das demais intenções e tem as duas respostas da seção 8.3 da arquitetura. A saída é a mesma da 7.1, definida no [ADR 0012](./decisions/0012-saida-da-classificacao.md), que vem antes das duas tarefas.
-  - 7.3 mensagens fixas de urgência, clínico bloqueado e oferta de atendimento. A de urgência traz o 192 ou o pronto-socorro e o CVV (188). Nesta tarefa entram os textos padrão. O texto por clínica depende do ADR de configuração da clínica.
+  - 7.3 mensagens fixas de urgência, oferta de aviso depois da urgência, clínico bloqueado e oferta de atendimento. A de urgência traz o 192 ou o pronto-socorro e o CVV (188). Nesta tarefa entram os textos padrão. O texto por clínica depende do ADR de configuração da clínica.
   - 7.4 registro em `log_auditoria`.
-  - 7.5 urgência verificada antes do `human_mode`, com a transição da conversa para `escalada` (seção 8.1 da arquitetura). Executada depois da 7.3 e da 7.4, porque usa a mensagem fixa e a auditoria. O descarte da ação pendente fica na tarefa 9.5, porque a ação pendente só existe a partir da etapa 9.
+  - 7.5 urgência verificada antes do `human_mode` (seção 8.1 da arquitetura). Só a mensagem fixa de urgência sai, sem a oferta de aviso e sem mudar o estado da conversa. Executada depois da 7.3 e da 7.4, porque usa a mensagem fixa e a auditoria. A oferta, a transição e o descarte da ação pendente ficam na tarefa 9.5, porque a ação pendente só existe a partir da etapa 9.
 - **Código:** `app/classification/`, `app/auditoria/`, `tests/unit/`.
 - **Critério de pronto:**
   - toda mensagem `clinico_bloqueado` ou `urgencia` gera registro de auditoria.
@@ -198,6 +198,7 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
   - os casos da lista de perguntas bloqueadas são testados.
   - com `urgencia` na lista de intenções, só a mensagem de urgência sai, e `clinico_bloqueado` é tratado antes das demais intenções.
   - a mensagem de urgência sai também numa conversa com `human_mode` ativo, verificado por teste.
+  - a mensagem de urgência não depende de nenhuma resposta do paciente e não muda o estado da conversa nesta etapa, verificado por teste.
 - **Fora do escopo:** revisão clínica das mensagens fixas, que acontece na etapa 20.
 
 ### Etapa 8: RAG por clínica
@@ -227,7 +228,7 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
   - 9.1 definição das ferramentas `verificar_disponibilidade`, `criar_agendamento`, `cancelar` e `buscar_duvida_frequente`.
   - 9.2 ligação das ferramentas ao motor de estados.
   - 9.3 prompt reduzido nos estados `coletando_info` e `aguardando_confirmacao`.
-  - 9.5 ação pendente da conversa (agendar, cancelar, remarcar ou abrir handoff), com expiração de 15 minutos. Depois disso, o agente pede a confirmação de novo. Uma urgência descarta a ação pendente.
+  - 9.5 ação pendente da conversa (agendar, cancelar, remarcar ou abrir handoff), com expiração de 15 minutos. Depois disso, o agente pede a confirmação de novo. Inclui as ofertas de handoff da decisão 27 (depois da urgência, no `clinico_bloqueado`, no `ambiguo` que persiste, na pergunta administrativa sem informação e no cancelamento fora da janela com política `handoff`), com a aresta `idle -> aguardando_confirmacao` do [ADR 0003](./decisions/0003-grafo-de-transicoes.md) em `app/core/estados.py`. Uma urgência descarta a ação pendente anterior e passa a aguardar a resposta à oferta de aviso: aceite leva a `escalada`, recusa ou expiração levam a `idle`. Com `human_mode` ativo ou em `escalada`, não há oferta.
   - 9.6 confirmação do paciente antes de cancelar e de remarcar, citando data, hora e profissional.
   - 9.7 oferta de handoff na terceira repetição da mesma intenção sem solução, com a contagem feita pelo código.
   - 9.8 agrupamento de mensagens seguidas do mesmo contato (seção 8.1 da arquitetura).

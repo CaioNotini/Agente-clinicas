@@ -113,6 +113,29 @@ O [guia de respostas](../guias_respostas/guia_respostas.md) registra duas decis�
 - Se um handoff passar a avisar mais de um destinatário, vale a consequência já registrada acima: o registro de notificações vira uma tabela própria.
 - A urgência continua sem depender do handoff.
 
+## Revisão de 2026-11-26 (decisão 27 do guia de respostas)
+
+### Contexto
+
+Pela decisão 27 do [guia de respostas](../guias_respostas/guia_respostas.md), nenhum handoff é aberto sem a confirmação do paciente. Ela cita o cancelamento fora da janela com política `handoff` entre os casos de oferta. As exceções são o paciente que pede para falar com uma pessoa e o erro interno de configuração da clínica.
+
+### Decisão
+
+- Política `handoff` da Q-22: o agente oferece o encaminhamento. Se o paciente aceitar, o pedido vira handoff com motivo `cancelamento_fora_da_janela`, e o agendamento só é cancelado depois da decisão humana. Se ele recusar, o agendamento continua ativo.
+- O valor `handoff` do CHECK de `politica_cancelamento_fora_janela` continua o mesmo. Não há migration.
+- O handoff com motivo `configuracao_invalida` continua aberto na hora, sem oferta. Ele é um alerta de operação, não uma transferência do paciente: quando a tarefa 13.1 existir, ele não leva a conversa para `escalada` nem para `human_mode`.
+- `aceitar_e_marcar` não muda.
+
+### Alternativas consideradas
+
+- Manter o handoff direto no cancelamento fora da janela. Descartada: contraria a decisão 27, e o paciente pode preferir manter a consulta a esperar a decisão da clínica.
+- Fazer também uma oferta no erro de configuração. Descartada: o erro é da clínica, não uma escolha do paciente, e precisa chegar a quem opera o sistema.
+
+### Consequências
+
+- O código da etapa 5 abre o handoff direto. A oferta precisa da ação pendente e entra na tarefa 9.5, registrada em [`status.md`](../status.md).
+- A urgência continua sem depender do handoff. A oferta de avisar o profissional vem depois da mensagem de urgência e nunca a condiciona (seção 8.1 da [arquitetura](../arquitetura.md#81-mensagem-recebida)).
+
 ## Status
 
-Aceita. Revista em 2026-11-24 (tarefa 5.4) e em 2026-11-26 (decisões 5 e 12 do guia de respostas)
+Aceita. Revista em 2026-11-24 (tarefa 5.4), em 2026-11-26 (decisões 5 e 12 do guia de respostas) e em 2026-11-26 (decisão 27 do guia de respostas)

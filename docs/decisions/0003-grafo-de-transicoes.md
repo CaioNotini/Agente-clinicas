@@ -1,7 +1,7 @@
 ```
 Papel: registra o grafo de transicoes validas entre os estados da conversa (etapa 4.1).
 Entrada: docs/status.md
-Relaciona-se com: ../arquitetura.md (D-08, secoes 7, 8.1 e 8.4), ../etapas.md (etapa 4), ../../app/core/estados.py, ../../tests/concurrency/test_estados.py
+Relaciona-se com: ../arquitetura.md (D-08, secoes 7, 8.1 e 8.4), ../etapas.md (etapa 4), ../../app/core/estados.py, ../../tests/concurrency/test_estados.py, ../guias_respostas/guia_respostas.md
 ```
 
 # 0003: Grafo de transicoes entre estados da conversa
@@ -41,6 +41,28 @@ Um grafo fechado e pequeno torna a maquina de estados verificavel e deterministi
 - Transicoes dirigidas por conteudo (qual aresta tomar) dependem de classificacao de intencao e entram a partir da etapa 7. A etapa 4 so garante o grafo e o lock.
 - Se um fluxo futuro exigir uma aresta nova (por exemplo `idle -> encerrada` com justificativa real), este ADR e o grafo em `app/core/estados.py` precisam ser atualizados juntos.
 
+## Revisao de 2026-11-26 (decisoes 13 e 27 do guia de respostas)
+
+### Contexto
+
+Pela decisao 27 do [guia de respostas](../guias_respostas/guia_respostas.md), nenhum handoff e aberto sem a confirmacao do paciente. O agente oferece o encaminhamento depois de uma urgencia, de um `clinico_bloqueado`, de um `ambiguo` que persiste, de uma pergunta administrativa sem informacao e de um cancelamento fora da janela com politica `handoff`. Pela decisao 13 revista, depois da oferta da urgencia a conversa aguarda a resposta do paciente. Essas ofertas partem de `idle`, e o grafo nao tem a aresta `idle -> aguardando_confirmacao`.
+
+### Decisao
+
+- O grafo ganha a aresta `idle -> aguardando_confirmacao`, usada por todas as ofertas da decisao 27.
+- Uma conversa `encerrada` passa por `idle` antes, pelas arestas que ja existem.
+- O aceite usa `aguardando_confirmacao -> escalada`. A recusa e a expiracao usam `aguardando_confirmacao -> idle`. As duas ja existem.
+
+### Alternativas consideradas
+
+- Guardar a oferta so como acao pendente, sem mudar o estado. Descartada: o estado deixaria de mostrar que a conversa espera uma resposta, e a linha CV-03 do guia usa `aguardando_confirmacao`.
+- Uma aresta so para a urgencia. Descartada: as outras ofertas da decisao 27 tambem partem de `idle` e esperam a mesma confirmacao.
+
+### Consequencias
+
+- O grafo executavel em `app/core/estados.py` muda so na tarefa 9.5, junto com a acao pendente que usa a aresta. Ate la, ele continua com a tabela acima, e a pendencia fica em [`status.md`](../status.md).
+- Na tarefa 7.5, a mensagem de urgencia sai sem mudar o estado, entao a etapa 7 nao precisa da aresta.
+
 ## Status
 
-Aceita
+Aceita. Revista em 2026-11-26 (decisoes 13 e 27 do guia de respostas)
