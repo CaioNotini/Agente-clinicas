@@ -31,7 +31,7 @@ A planilha [`guia_respostas.xlsx`](./guia_respostas.xlsx) reúne, para cada situ
 
 ## Fonte da verdade
 
-- Os textos de `urgencia` e `clinico_bloqueado` valem como estão em `app/mensagens/fixas.py`. A aba Mensagens fixas é só uma cópia de referência e não altera o agente.
+- Os textos padrão das mensagens fixas valem como estão em `app/mensagens/fixas.py`, e cada clínica pode definir o próprio texto (decisão 26). A aba Mensagens fixas é só uma cópia de referência e não altera o agente.
 - Regras de negócio, como antecedência, janela de cancelamento e destinatário do handoff, ficam no código e no banco. A planilha descreve o comportamento esperado, não o define (regra 4 do [CLAUDE.md](../../CLAUDE.md)).
 - A coluna `fonte` aponta para onde o dado fica no produto. No estudo, os dados da clínica P1 vêm de [`clinica.md`](../fake_clinic/clinica.md).
 - O perfil de uma clínica não é um campo no banco. Ele resulta dos dados dela: quantas especialidades tem, quantos profissionais fazem cada serviço e quem recebe o handoff.

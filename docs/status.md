@@ -1,7 +1,7 @@
 ```
 Papel: Índice de entrada único da documentação e registro do estado verificado mais recente.
 Entrada: docs/status.md
-Relaciona-se com: etapas.md, estudo.md, arquitetura.md, principios.md, decisions/README.md, diagnosticos/2026-11-18-plano-rodada3.md, diagnosticos/2026-11-24-rodada4.md, diagnosticos/2026-11-25-rodada5.md, diagnosticos/2026-11-25-instabilidade-concorrencia.md
+Relaciona-se com: etapas.md, estudo.md, arquitetura.md, principios.md, decisions/README.md, diagnosticos/2026-11-18-plano-rodada3.md, diagnosticos/2026-11-24-rodada4.md, diagnosticos/2026-11-25-rodada5.md, diagnosticos/2026-11-25-instabilidade-concorrencia.md, guias_respostas/guia_respostas.md
 ```
 
 # Status do projeto
@@ -49,6 +49,8 @@ O que o código garante hoje, com a decisão de cada ponto:
 
 ## Decisões recentes
 
+- 2026-11-26: os documentos canônicos foram alinhados às 26 decisões aprovadas do [guia de respostas](./guias_respostas/guia_respostas.md), antes da 7.1. A decisão 23 foi refinada: com `urgencia` na lista de intenções, só a mensagem de urgência sai. A urgência é verificada antes do `human_mode`. Sem resposta ao lembrete, só o T-1 ganha um segundo envio, sem handoff. O destinatário do handoff passa a ser por profissional, com um destinatário padrão. Detalhes nas seções 8.1 a 8.4 e na Q-25 da [arquitetura](./arquitetura.md) (versão 2.2) e na revisão de 2026-11-26 do [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md). Nada disso está implementado ainda.
+
 - 2026-11-25, etapa 0: existe uma única mensagem fixa de `urgencia`, que cobre todo risco imediato à vida, inclusive o pensamento de autolesão. Ela orienta o 192 ou o pronto-socorro de forma incondicional e cita o CVV (188), sem subcategoria de urgência. Perguntas administrativas nunca são `clinico_bloqueado`. Sem a informação na base, o agente oferece handoff ou seguir no automático. Regras na seção 8.3 da [arquitetura](./arquitetura.md#83-escopo-clínico).
 
 - 2026-11-25, C6: a coluna `conversas.historico` foi removida (migration `a5587f532a88`, com downgrade que a recria). Ela nunca foi lida nem escrita. O contexto do LLM da etapa 7 virá das últimas mensagens do contato, direto de `mensagens` (`contato_telefone`, `conteudo`, `direcao`, `criada_em` por tenant). Manter `historico` duplicaria o dado, com risco de divergência e mais um ponto a apagar na exclusão do titular (LGPD). Um resumo de conversas longas, se preciso na etapa 7, será coluna nova com contrato e ADR.
@@ -57,7 +59,16 @@ O que o código garante hoje, com a decisão de cada ponto:
 
 **Previstas para etapas futuras**
 
-- 7.3: `MENSAGEM_URGENCIA` em [`fixas.py`](../app/mensagens/fixas.py) ainda não cita o CVV (188), decidido na seção 8.3 da [arquitetura](./arquitetura.md#83-escopo-clínico).
+- Antes da 7.2: ADR da saída da classificação. Define a lista de intenções com prioridade, como a saída separa as duas respostas de `clinico_bloqueado` e a verificação de urgência com `human_mode` ativo só pela regra da 7.1, sem LLM (seções 8.1 e 8.3 da [arquitetura](./arquitetura.md)).
+- 7.3: três mensagens fixas em [`fixas.py`](../app/mensagens/fixas.py): urgência com o 192 ou o pronto-socorro e o CVV (188), clínico bloqueado e oferta de atendimento (seção 8.3 da [arquitetura](./arquitetura.md#83-escopo-clínico)). Hoje `MENSAGEM_URGENCIA` não cita o CVV e a oferta de atendimento não existe.
+- Antes da 8: ADR de configuração e informações administrativas da clínica, com os itens da aba Configuração da clínica do [guia](./guias_respostas/guia_respostas.md), incluindo a regra de que dado com coluna própria não entra no RAG.
+- Antes da 8: migration de `servicos.preco` de `Float` para `Numeric(10,2)`.
+- Antes da 9: ADR da ação pendente da conversa, com a expiração de 15 minutos (decisão 11 do guia).
+- Antes da 9: ADR do agrupamento de mensagens (decisões 10 e 14 do guia). Revê os ADRs [0005](./decisions/0005-ordem-por-conversa.md) e [0008](./decisions/0008-conclusao-atomica-do-job.md).
+- Antes da 9: ADR do paciente separado do contato que escreve (terceiros, menores e privacidade).
+- Antes da 9: destinatário do handoff por profissional e destinatário padrão em [`app/handoff/abertura.py`](../app/handoff/abertura.py) (revisão de 2026-11-26 do [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md)).
+- Antes da 9: política para pedidos fora da antecedência (recusar, handoff ou agendar) em `regras_agendamento`.
+- 17: ADR do provedor de transcrição de áudio (Whisper local no estudo, Amazon Transcribe no MVP).
 - 7.2: implementar a saída estruturada no `AnthropicClient` e remover `EsquemaSaidaNaoSuportado`. Hoje `esquema_saida` preenchido levanta esse erro, que leva o job a `dead` ([ADR 0010](./decisions/0010-llmclient.md)).
 - 7.2: nenhuma chamada ao LLM entre o INSERT de agendamento e o commit da transação. O lock da agenda do profissional fica até o commit, e a espera dos outros pacientes passaria do `lock_timeout` ([ADR 0011](./decisions/0011-lock-de-agenda-por-profissional.md)). O texto de resposta é gerado antes da gravação ou depois do commit.
 - 7.2: chamar `criar_cliente_llm` no `main()` do worker e injetar o cliente no processamento ([ADR 0010](./decisions/0010-llmclient.md)). Hoje a função existe, mas nada a chama.
@@ -100,6 +111,7 @@ O que o código garante hoje, com a decisão de cada ponto:
 - [`estudo.md`](./estudo.md): escopo, premissas e orçamento do estudo
 - [`arquitetura.md`](./arquitetura.md): decisões técnicas, modelo de dados e questões em aberto
 - [`principios.md`](./principios.md): princípios e como são verificados
+- [`guias_respostas/guia_respostas.md`](./guias_respostas/guia_respostas.md): guia de respostas do agente, com as 26 decisões aprovadas e a planilha [`guia_respostas.xlsx`](./guias_respostas/guia_respostas.xlsx)
 - [`decisions/README.md`](./decisions/README.md): ADRs 0001 a 0011
 - [`fake_clinic/clinica.md`](./fake_clinic/clinica.md), [`fake_clinic/FAQ.md`](./fake_clinic/FAQ.md) e [`fake_clinic/pergs_bloqueadas.md`](./fake_clinic/pergs_bloqueadas.md): base fictícia (clínica com equipe e recepção)
 - [`fake_clinic/consultorio_solo.md`](./fake_clinic/consultorio_solo.md): segundo tenant fictício, consultório de um profissional só, sem recepção, para testar as regras da etapa 5 nos dois cenários

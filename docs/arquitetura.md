@@ -1,12 +1,12 @@
 ```
 Papel: Fonte única das decisões técnicas (D-xx), modelo de dados e questões em aberto (Q-xx).
 Entrada: docs/status.md
-Relaciona-se com: estudo.md, etapas.md, decisions/0001-alembic.md, decisions/0002-contas-de-banco.md, status.md
+Relaciona-se com: estudo.md, etapas.md, decisions/0001-alembic.md, decisions/0002-contas-de-banco.md, status.md, guias_respostas/guia_respostas.md
 ```
 
 # Arquitetura do MVP: agente de agendamento para clínicas via WhatsApp
 
-Outubro de 2026 · versão 2.1 · documento de referência para os sócios e para o desenvolvimento · alinhado ao plano de estudo v1.2
+Novembro de 2026 · versão 2.2 · documento de referência para os sócios e para o desenvolvimento · alinhado ao plano de estudo v1.2 e às decisões do [guia de respostas](./guias_respostas/guia_respostas.md)
 
 ---
 
@@ -235,6 +235,8 @@ Valores fixos, iguais no estudo e no MVP:
 
 ## 8. Fluxos principais
 
+As decisões numeradas citadas nas seções 8.1 a 8.4 e na seção 13 são as da lista de [decisões aprovadas do guia de respostas](./guias_respostas/guia_respostas.md#decisões-aprovadas-registradas-na-planilha).
+
 ### 8.1 Mensagem recebida
 
 ```
@@ -250,12 +252,19 @@ SELECT ... FROM jobs ... FOR UPDATE SKIP LOCKED                  trava do job, s
  ↓
 SELECT estado_conversa FROM conversas WHERE id = ... FOR UPDATE  trava da conversa
  ↓
+Classificação: lista de intenções, cada uma com categoria + confiança (decisão 23)
+ ↓
+Há urgencia na lista? → mensagem de segurança fixa (192 ou pronto-socorro, incondicional, e CVV 188) + log_auditoria,
+ │                      mesmo com human_mode = true (decisão 13). A conversa vai para escalada, a ação pendente
+ │                      é descartada e nenhuma outra intenção é respondida. O handoff é secundário e não é a via
+ │                      de resposta prometida ao paciente
+ ↓
 Se human_mode = true → não responde. A mensagem aparece no painel
  ↓
-Classificação (categoria + confiança)
- ├─ administrativo / agendamento  → RAG / function calling. Sem informação na base → oferece handoff ou seguir no automático
- ├─ clinico_bloqueado             → mensagem fixa + handoff + log_auditoria
- ├─ urgencia                      → mensagem de segurança fixa (192 ou pronto-socorro, incondicional, e CVV 188) + log_auditoria. O handoff é secundário e não é a via de resposta prometida ao paciente
+Há clinico_bloqueado na lista? → tratado primeiro, com uma das duas respostas da seção 8.3. As demais intenções vêm depois
+ ↓
+Demais intenções
+ ├─ administrativo / agendamento  → RAG / function calling. Sem informação na base → oferece handoff ou seguir no automático (decisão 2)
  └─ ambiguo, ou confiança < 0,7   → 1 esclarecimento → handoff se persistir
  ↓
 Channel.send_text(...)
@@ -264,6 +273,12 @@ UPDATE estado_conversa; COMMIT; job = done
 ```
 
 As duas travas resolvem problemas diferentes. `SKIP LOCKED` impede que dois workers peguem o mesmo job. `FOR UPDATE` na conversa impede que duas mensagens da mesma conversa sejam processadas ao mesmo tempo.
+
+**Prioridade entre intenções (decisão 23, refinada em 2026-11-26).** A classificação devolve uma lista de intenções, e o agente responde a todas, com duas exceções. Com `urgencia` na lista, só a mensagem de urgência sai. Com `clinico_bloqueado`, ele é tratado primeiro e as demais intenções são respondidas depois. Com as duas na lista, vale a urgência. O formato da saída fica no ADR da saída da classificação, que vem antes da tarefa 7.2.
+
+**Urgência antes do `human_mode` (decisão 13).** A urgência é verificada antes do `human_mode`, então a mensagem fixa sai mesmo numa conversa assumida por um humano. Depois dela, a conversa vai para `escalada` e a ação pendente é descartada. Numa conversa que já está em `escalada`, o estado continua como está. Numa conversa `encerrada`, ela passa por `idle` e depois por `escalada`. As duas arestas já existem no grafo do [ADR 0003](./decisions/0003-grafo-de-transicoes.md), que não muda. A consequência é o custo: verificar a urgência antes do `human_mode` faz toda mensagem de conversa assumida passar pela classificação. A direção para o ADR da saída da classificação é que, em conversa com `human_mode` ativo, a verificação de urgência use só a regra da tarefa 7.1, sem chamada ao LLM.
+
+**Agrupamento de mensagens (planejado, decisões 10 e 14).** Mensagens seguidas do mesmo contato serão agrupadas e tratadas como uma só. A espera é de 4 segundos, renovada a cada mensagem nova, com teto de 12 segundos. Mensagem com palavra de urgência não espera. A espera usa o `run_at` do job e mantém a ordem do [ADR 0005](./decisions/0005-ordem-por-conversa.md). Os valores são iniciais e serão ajustados com dados da etapa 10 e do piloto. O mecanismo ainda não existe. O ADR do agrupamento vem antes da etapa 9 e revê os ADRs 0005 e 0008. A palavra de urgência que dispensa a espera depende da regra da tarefa 7.1, e num áudio ela só aparece depois da transcrição.
 
 Um job que falha volta para `pending` até `max_attempts`. A exceção é o erro permanente (`ErroPermanente`, em [`app/core/erros.py`](../app/core/erros.py)), como `ConfiguracaoInvalida` e `MisturaDeTenants`. Uma nova tentativa falharia igual e só atrasaria as mensagens seguintes da conversa. O job vai para `dead` na primeira falha, e o worker registra um log estruturado de erro com `tenant_id`, o id do job e o tipo do erro (tarefa 5.4).
 
@@ -297,10 +312,13 @@ Para cada um: cria job SEND_REMINDER (run_at = agora) e marca como 'enfileirado'
 Resposta do paciente → classificação restrita (confirmar / cancelar / remarcar / dúvida)
  ↓
 Sem resposta ao T-7 → nenhum lembrete adicional. O próximo passo é o T-1
-Sem resposta ao T-1 → handoff para o responsável configurado pela clínica (seção 8.4)
+Sem resposta ao T-1 até o fim do tempo de espera → segundo envio do T-1 (decisão 18)
+Sem resposta ao segundo envio → nenhum lembrete novo e nenhum handoff
 ```
 
 Regras complementares:
+
+- **Sem resposta (decisão 18).** Só o último lembrete enviado, o T-1, ganha um segundo envio, depois do tempo de espera da confirmação. Uma consulta recebe no máximo 3 mensagens: T-7, T-1 e o segundo envio do T-1. Isso substitui a regra anterior, que abria handoff quando não havia resposta ao T-1. O tempo de espera é configurado pela clínica e entra no ADR de configuração da clínica, antes da etapa 8.
 
 - **Consultas marcadas entre 1 e 7 dias de antecedência** recebem só o T-1, porque o T-7 já passou no momento do agendamento.
 - **Remarcação:** os lembretes pendentes da consulta anterior são cancelados, e a regra é aplicada de novo à nova data.
@@ -316,7 +334,16 @@ Três camadas, em ordem:
 
 1. **Ferramentas.** O modelo só pode chamar as quatro ferramentas da seção 7. Não existe ferramenta para responder sobre saúde.
 2. **Classificação com confiança.** Antes de gerar texto livre, a mensagem é classificada. Confiança abaixo de 0,7 vira `ambiguo`. A assimetria é deliberada: na dúvida, o sistema escala em vez de responder.
-3. **Mensagens fixas.** `clinico_bloqueado` e `urgencia` respondem com texto aprovado previamente, idealmente revisado por alguém com formação clínica antes do piloto.
+3. **Mensagens fixas.** `clinico_bloqueado` e `urgencia` respondem com texto aprovado previamente, nunca gerado pelo LLM, idealmente revisado por alguém com formação clínica antes do piloto.
+
+As mensagens fixas são três: a de urgência, a de clínico bloqueado e a de oferta de atendimento (decisões 22 e 26).
+
+**Duas respostas para `clinico_bloqueado` (decisões 22 e 25).**
+
+- A pergunta que espera uma resposta clínica, como "posso tomar esse remédio?", recebe a mensagem fixa de clínico bloqueado e abre o handoff.
+- O sintoma de quem espera atendimento, como "estou com dor nas costas", recebe a oferta de atendimento. O paciente escolhe entre o handoff para o profissional e seguir com o agendamento. O handoff só abre se ele aceitar.
+- Sintomas odontológicos como inchaço com febre recebem a oferta de atendimento, não a mensagem de urgência, para a urgência não ser acionada em excesso. Dificuldade para respirar continua sendo urgência pela regra geral. A linha OD-02b do guia é a primeira a passar por revisão clínica, na tarefa 20.5.
+- As duas respostas gravam `log_auditoria`, porque a categoria continua `clinico_bloqueado`. Como a classificação separa os dois casos fica no ADR da saída da classificação.
 
 A de `clinico_bloqueado` não cita recepção e não promete resposta imediata, porque num consultório solo pode não haver ninguém monitorando o handoff na hora. Exemplo:
 
@@ -326,19 +353,31 @@ A de `urgencia` orienta o paciente a procurar o serviço de emergência de forma
 
 > "Se isto for uma emergência, ligue 192 (SAMU) ou procure o pronto-socorro mais próximo agora. Se você está pensando em se machucar, ligue 188 (CVV), a qualquer hora. Este canal não faz atendimento de urgência."
 
-Existe uma única mensagem fixa de `urgencia`. Ela cobre todo risco imediato à vida, inclusive o pensamento de autolesão, e sempre traz o 192 ou o pronto-socorro de forma incondicional e o CVV (188). Não há subcategoria de urgência. Uma subcategoria exigiria que o classificador acertasse também o subtipo, e um erro ali deixaria a pessoa sem o CVV. O texto final é escrito na tarefa 7.3 e revisado na etapa 20.
+Existe um único tipo de mensagem de urgência, sem subcategoria. Ela cobre todo risco imediato à vida, inclusive o pensamento de autolesão, e sempre traz o 192 ou o pronto-socorro de forma incondicional e o CVV (188). Uma subcategoria exigiria que o classificador acertasse também o subtipo, e um erro ali deixaria a pessoa sem o CVV. O texto padrão é escrito na tarefa 7.3 e revisado na etapa 20.
+
+A de oferta de atendimento cita o profissional e deixa a escolha ao paciente. Exemplo, ainda rascunho:
+
+> "Entendi, {nome}. Esse tipo de situação precisa ser avaliado pelo(a) {profissional}. Você prefere que eu encaminhe sua mensagem para ele(a), ou quer seguir com o agendamento de uma consulta?"
+
+**Textos por clínica (decisão 26).** Cada clínica pode definir os textos das três mensagens fixas. Quando ela não define, vale o texto padrão do tipo, em [`fixas.py`](../app/mensagens/fixas.py). A mensagem de urgência tem um conteúdo mínimo obrigatório que a clínica não pode remover: a orientação incondicional de ligar 192 ou procurar o pronto-socorro, e o CVV (188). O texto continua fixo e nunca é gerado pelo LLM (D-10). Quem aprova e quem revisa o texto de cada clínica é a Q-25. Hoje só existem textos padrão.
 
 **Linha de corte:** se a resposta muda conforme o estado de saúde da pessoa, é fora do escopo. Se é igual para qualquer paciente, é administrativo.
 
-**Perguntas administrativas.** Perguntas administrativas e informativas, como valor da consulta particular, reembolso, convênios aceitos, horários, endereço e documentos necessários, são da categoria `administrativo` e nunca `clinico_bloqueado`. O agente responde quando a clínica fornece a informação na configuração ou na base de conhecimento. Quando a informação não existe, o agente não inventa resposta. Ele diz que não tem a informação e oferece ao paciente a escolha entre falar com o responsável pelo atendimento (handoff) ou seguir no atendimento automático. Os casos de teste estão no [FAQ](./fake_clinic/FAQ.md).
+**Perguntas administrativas.** Perguntas administrativas e informativas, como valor da consulta particular, reembolso, convênios aceitos, horários, endereço e documentos necessários, são da categoria `administrativo` e nunca `clinico_bloqueado`. O agente responde quando a clínica fornece a informação na configuração ou na base de conhecimento. Quando a informação não existe, o agente não inventa resposta. Ele diz que não tem a informação e oferece ao paciente a escolha entre falar com o responsável pelo atendimento (handoff) ou seguir no atendimento automático (decisão 2). Os casos de teste estão no [FAQ](./fake_clinic/FAQ.md).
 
 **Conteúdo de RAG.** Cada chunk de `conhecimento_clinica` tem `categoria`. A busca filtra por `tenant_id` e por categoria permitida antes da similaridade, para que um FAQ mal escrito pela clínica não vire fonte de resposta clínica.
 
 ### 8.4 Handoff e painel
 
-Um handoff é aberto quando: a mensagem é `clinico_bloqueado` ou `urgencia`, a conversa cai em `escalada`, o paciente não é entendido após o esclarecimento, ou o paciente escolhe falar com uma pessoa depois de uma pergunta administrativa sem informação na base (seção 8.3).
+Um handoff é aberto quando: a mensagem é `urgencia`, a mensagem é `clinico_bloqueado` com pergunta que espera resposta clínica, o paciente aceita a oferta de atendimento depois de descrever um sintoma, a conversa cai em `escalada`, o paciente não é entendido após o esclarecimento, ou o paciente escolhe falar com uma pessoa depois de uma pergunta administrativa sem informação na base (seção 8.3).
 
-O responsável pelo atendimento humano é configurado pela clínica e pode ser uma recepção ou o próprio profissional. O aviso vai para `clinicas.telefone_plantao`, seja de quem for ([ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md)).
+O responsável pelo atendimento humano é configurado pela clínica e pode ser uma recepção ou o próprio profissional. O destinatário do aviso segue estas regras (decisões 5 e 12):
+
+- Nas clínicas sem recepção nem secretaria, o aviso vai para o profissional da consulta do paciente, ou para aquele com quem ele quer marcar.
+- Sem consulta nem preferência de profissional, o aviso vai para um destinatário padrão definido previamente pela clínica.
+- Nas clínicas com recepção ou secretaria, o destinatário segue a configuração da clínica.
+
+Hoje o código ainda manda todo aviso para `clinicas.telefone_plantao` ([ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md), revisão de 2026-11-26). O destinatário por profissional e o destinatário padrão entram antes da etapa 9, em [`app/handoff/abertura.py`](../app/handoff/abertura.py).
 
 ```
 Handoff aberto → grava em handoffs e muda estado_conversa para 'escalada' (na etapa 5 só grava, ver abaixo)
@@ -348,7 +387,7 @@ Job NOTIFY_HANDOFF → envia template ao WhatsApp pessoal do responsável de pla
  ↓
 Responsável abre o painel e lê o histórico
  ↓
-"Assumir conversa" → human_mode = true. O bot para de responder nesta conversa.
+"Assumir conversa" → human_mode = true. O bot para de responder nesta conversa, exceto pela mensagem de urgência (seção 8.1).
  ↓
 Responsável responde pelo painel → sai pelo número oficial da clínica
  ↓
@@ -439,7 +478,7 @@ Qualquer decisão técnica (D-xx) ou questão em aberto (Q-xx) citada nas entreg
 
 ## 13. Questões em aberto
 
-As questões Q-01 a Q-19 não bloqueiam as etapas 0 a 5. As questões Q-20 a Q-24 eram da especificação da etapa 5 e estão resolvidas: Q-20 pela tarefa 5.5 e Q-21 a Q-24 pelo [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md). A coluna "Responder até" indica a etapa em que precisam de resposta.
+As questões Q-01 a Q-19 não bloqueiam as etapas 0 a 5. As questões Q-20 a Q-24 eram da especificação da etapa 5 e estão resolvidas: Q-20 pela tarefa 5.5 e Q-21 a Q-24 pelo [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md). A Q-25 vem da decisão 26 do guia de respostas. A coluna "Responder até" indica a etapa em que precisam de resposta.
 
 | #    | Questão                                                                                                                                                                                                                                                                                                                                         | Responder até                           |
 | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
@@ -466,7 +505,8 @@ As questões Q-01 a Q-19 não bloqueiam as etapas 0 a 5. As questões Q-20 a Q-2
 | Q-21 | **Duração da consulta.** Resolvida pelo [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md): `servicos.duracao_minutos` é a duração padrão, e `profissional_servicos.duracao_minutos` é o override opcional por profissional. O fim do agendamento usa o override quando ele existe                                                       | Etapa 5 (resolvida)                     |
 | Q-22 | **Cancelamento fora da janela.** Resolvida pelo [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md): política configurável por clínica em `regras_agendamento.politica_cancelamento_fora_janela`. `handoff` (padrão) abre handoff e só cancela após decisão humana. `aceitar_e_marcar` cancela na hora e marca `agendamentos.cancelado_fora_da_janela` | Etapa 5 (resolvida)                     |
 | Q-23 | **Fuso horário.** Resolvida pelo [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md): fuso por clínica em `clinicas.fuso` (nome IANA, default `America/Sao_Paulo`). As regras de antecedência, janela de cancelamento e lembretes usam o fuso da clínica. O armazenamento continua em UTC, e a conversão fica numa função única. A conversão para exibição ao paciente entra quando houver canal que exiba horário | Etapa 5 (resolvida)                     |
-| Q-24 | **Quem foi notificado no handoff.** Resolvida pelo [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md): `handoffs` ganha `notificado_para` e `notificado_canal`, ao lado de `notificado_em`. O destinatário continua sendo `clinicas.telefone_plantao`                                                                                   | Etapa 5 (resolvida)                     |
+| Q-24 | **Quem foi notificado no handoff.** Resolvida pelo [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md): `handoffs` ganha `notificado_para` e `notificado_canal`, ao lado de `notificado_em`. O destinatário continua sendo `clinicas.telefone_plantao`. Revisto pelas decisões 5 e 12, ver seção 8.4                                     | Etapa 5 (resolvida)                     |
+| Q-25 | **Textos das mensagens fixas por clínica.** Quem aprova e quem revisa os textos que cada clínica define para as mensagens de urgência, clínico bloqueado e oferta de atendimento (decisão 26). O conteúdo mínimo obrigatório da urgência (192 ou pronto-socorro, e CVV 188) vale para qualquer texto | Etapa 20                                |
 
 ## 14. Riscos
 

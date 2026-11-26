@@ -1,7 +1,7 @@
 ```
 Papel: define as etapas do projeto, o que cada uma entrega, de onde vem sua base e quando é considerada concluída.
 Entrada: docs/status.md
-Relaciona-se com: status.md, estudo.md, arquitetura.md, principios.md, decisions/README.md
+Relaciona-se com: status.md, estudo.md, arquitetura.md, principios.md, decisions/README.md, guias_respostas/guia_respostas.md
 ```
 
 # Etapas do projeto
@@ -182,18 +182,21 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
 ### Etapa 7: classificação, mensagens fixas e auditoria
 
 - **Depende de:** etapas 5 e 6.
-- **Base:** D-09, D-10, D-25 e seção 8.3 da arquitetura.
+- **Base:** D-09, D-10, D-25, seções 8.1 e 8.3 da arquitetura e as decisões 13, 22, 23, 25 e 26 do [guia de respostas](./guias_respostas/guia_respostas.md).
 - **Objetivo:** classificar cada mensagem com confiança, responder a casos clínicos e de urgência com texto fixo, e registrar tudo na auditoria.
 - **Tarefas:**
   - 7.1 classificação por regra, como baseline.
-  - 7.2 classificação com LLM, retornando categoria e confiança.
-  - 7.3 mensagens fixas para `clinico_bloqueado` e `urgencia`.
+  - 7.2 classificação com LLM, retornando uma lista de intenções, cada uma com categoria e confiança. Com `urgencia` na lista, só a mensagem de urgência sai. `clinico_bloqueado` é tratado antes das demais intenções e tem as duas respostas da seção 8.3 da arquitetura. O ADR da saída da classificação vem antes desta tarefa.
+  - 7.3 mensagens fixas de urgência, clínico bloqueado e oferta de atendimento. A de urgência traz o 192 ou o pronto-socorro e o CVV (188). Nesta tarefa entram os textos padrão. O texto por clínica depende do ADR de configuração da clínica.
   - 7.4 registro em `log_auditoria`.
+  - 7.5 urgência verificada antes do `human_mode`, com a transição da conversa para `escalada` (seção 8.1 da arquitetura). Executada depois da 7.3 e da 7.4, porque usa a mensagem fixa e a auditoria. O descarte da ação pendente fica na tarefa 9.5, porque a ação pendente só existe a partir da etapa 9.
 - **Código:** `app/classification/`, `app/auditoria/`, `tests/unit/`.
 - **Critério de pronto:**
   - toda mensagem `clinico_bloqueado` ou `urgencia` gera registro de auditoria.
   - confiança abaixo de 0,7 resulta em `ambiguo`.
   - os casos da lista de perguntas bloqueadas são testados.
+  - com `urgencia` na lista de intenções, só a mensagem de urgência sai, e `clinico_bloqueado` é tratado antes das demais intenções.
+  - a mensagem de urgência sai também numa conversa com `human_mode` ativo, verificado por teste.
 - **Fora do escopo:** revisão clínica das mensagens fixas, que acontece na etapa 20.
 
 ### Etapa 8: RAG por clínica
@@ -216,12 +219,18 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
 ### Etapa 9: function calling sobre o motor de estados
 
 - **Depende de:** etapas 5, 7 e 8.
-- **Base:** D-11, seção 7 da arquitetura.
+- **Base:** D-11, seções 7 e 8.1 da arquitetura e as decisões 1, 3, 10, 11, 13, 14 e 24 do [guia de respostas](./guias_respostas/guia_respostas.md).
 - **Objetivo:** permitir que o modelo execute ações apenas por meio das quatro ferramentas aprovadas.
 - **Tarefas:**
+  - 9.4 clínicas fictícias dos perfis P2, P3 e P4 da aba Perfis de clínica do guia, em [fake_clinic/](./fake_clinic/). Executada antes da 9.1, porque a pergunta de profissional e especialidade (decisão 3) e o destinatário do handoff por profissional precisam desses cenários. O [consultório solo](./fake_clinic/consultorio_solo.md) continua como tenant das regras da etapa 5.
   - 9.1 definição das ferramentas `verificar_disponibilidade`, `criar_agendamento`, `cancelar` e `buscar_duvida_frequente`.
   - 9.2 ligação das ferramentas ao motor de estados.
   - 9.3 prompt reduzido nos estados `coletando_info` e `aguardando_confirmacao`.
+  - 9.5 ação pendente da conversa (agendar, cancelar, remarcar ou abrir handoff), com expiração de 15 minutos. Depois disso, o agente pede a confirmação de novo. Uma urgência descarta a ação pendente.
+  - 9.6 confirmação do paciente antes de cancelar e de remarcar, citando data, hora e profissional.
+  - 9.7 oferta de handoff na terceira repetição da mesma intenção sem solução, com a contagem feita pelo código.
+  - 9.8 agrupamento de mensagens seguidas do mesmo contato (seção 8.1 da arquitetura).
+- **Antes das tarefas:** os ADRs da ação pendente e do agrupamento de mensagens, listados nas pendências do [status.md](./status.md).
 - **Código:** `app/tools/`, `tests/unit/`.
 - **Critério de pronto:** uma chamada fora da lista de ferramentas é rejeitada, e os fluxos de agendamento passam nos testes.
 - **Fora do escopo:** novas ferramentas sem atualização desta lista.
@@ -245,16 +254,16 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
 ### Etapa 11: lembretes T-7 e T-1
 
 - **Depende de:** etapa 5.
-- **Base:** D-18, seção 8.2 da arquitetura e Q-13.
-- **Objetivo:** enviar lembretes com a regra de antecedência, tratar remarcação e cancelamento, e escalar quando não houver resposta.
+- **Base:** D-18, seção 8.2 da arquitetura, Q-13 e a decisão 18 do [guia de respostas](./guias_respostas/guia_respostas.md).
+- **Objetivo:** enviar lembretes com a regra de antecedência, tratar remarcação e cancelamento, e fazer um segundo envio do T-1 quando não houver resposta.
 - **Tarefas:**
   - 11.1 regra de antecedência para consultas com 7 dias ou mais, entre 1 e 7 dias e com menos de 1 dia.
   - 11.2 tabela `lembretes` com índice de pendentes.
   - 11.3 varredura a cada 15 minutos, criando jobs `SEND_REMINDER`.
   - 11.4 remarcação recalcula os lembretes, e cancelamento os remove.
-  - 11.5 abertura de handoff quando não há resposta ao T-1.
+  - 11.5 segundo envio do T-1 quando não há resposta até o fim do tempo de espera, e nenhum lembrete depois dele. Não abre handoff.
 - **Código:** `app/reminders/`, `tests/unit/`, `tests/concurrency/`.
-- **Critério de pronto:** testes dos casos de borda (7 dias exatos, 1 dia exato e menos de 1 dia), de remarcação e de escalonamento passam.
+- **Critério de pronto:** testes dos casos de borda (7 dias exatos, 1 dia exato e menos de 1 dia), de remarcação e do segundo envio do T-1 passam. O teste do segundo envio confere que não há terceiro envio nem handoff.
 - **Atenção:** o valor da janela de cancelamento precisa ser maior que 1 dia para o T-1 ter utilidade (Q-13).
 
 ### Etapa 12: endurecimento de concorrência e isolamento
@@ -285,7 +294,7 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
 - **Código:** `app/handoff/`, `tests/unit/`.
 - **Critério de pronto:**
   - um handoff aberto cria o job de notificação.
-  - uma conversa com `human_mode` ativo não recebe resposta do bot, verificado por teste.
+  - uma conversa com `human_mode` ativo não recebe resposta do bot, exceto a mensagem de urgência (seção 8.1 da arquitetura), verificado por teste.
   - a devolução ao bot registra o fim do handoff.
 
 ### Etapa 14: painel de monitoramento
@@ -335,7 +344,7 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
 ### Etapa 17: WhatsAppClient
 
 - **Depende de:** etapa 13.
-- **Base:** D-15, seções 4 e 12 da arquitetura.
+- **Base:** D-15, seções 4 e 12 da arquitetura e as decisões 9, 15, 16 e 17 do [guia de respostas](./guias_respostas/guia_respostas.md).
 - **Objetivo:** receber e enviar mensagens pela Cloud API da Meta, usando o fluxo já construído.
 - **Tarefas:**
   - 17.1 envio e recebimento pela Cloud API.
@@ -343,9 +352,11 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
   - 17.3 submissão dos templates de lembrete e de notificação.
   - 17.4 teste com o número de teste da Meta.
   - 17.5 avaliar dedupe de mensagens por `(tenant_id, id)` (Q-19), quando o id passa a vir da Meta.
+  - 17.6 transcrição de áudio. O texto transcrito segue o fluxo normal e passa pela mesma classificação que o texto, inclusive a de urgência. Whisper local no estudo e Amazon Transcribe no MVP. O áudio é apagado logo depois da transcrição, e a transcrição é tratada como dado de saúde. Quando a transcrição falha, o agente pede que o paciente escreva a mensagem, de preferência, ou que reenvie o áudio. O provedor é decidido em ADR antes desta tarefa.
+  - 17.7 imagens enviadas pelo paciente não são guardadas.
 - **Código:** `app/channels/whatsapp.py`, `tests/unit/`.
 - **Critério de pronto:** uma mensagem recebida pelo webhook percorre o fluxo da etapa 3, uma assinatura inválida é rejeitada em teste, e os templates estão submetidos.
-- **Atenção:** o processo de Business Verification começa nesta etapa, porque depende da fila da Meta (Q-11).
+- **Atenção:** o processo de Business Verification começa nesta etapa, porque depende da fila da Meta (Q-11). No MVP, a política de opt-out do AWS Organizations precisa estar ativa antes do primeiro áudio de paciente enviado ao Amazon Transcribe.
 
 ### Etapa 18: deploy na Lightsail
 
@@ -384,7 +395,7 @@ Os marcos agrupam etapas por objetivo. Eles substituem as fases A a D do plano a
   - 20.2 templates aprovados pela Meta.
   - 20.3 Embedded Signup assistido.
   - 20.4 forma jurídica definida (Q-14).
-  - 20.5 revisão clínica das mensagens fixas (Q-09).
+  - 20.5 revisão clínica das mensagens fixas (Q-09). A linha OD-02b do [guia de respostas](./guias_respostas/guia_respostas.md) é a primeira a passar por revisão clínica: rosto inchado com febre e dificuldade para engolir recebe hoje a oferta de atendimento, não a mensagem de urgência (decisão 25).
   - 20.6 plano Pro do Supabase e Secrets Manager configurado.
   - 20.7 contrato de tratamento de dados com a lista de subprocessadores.
 - **Critério de pronto:** as tarefas 20.1 a 20.7 estão completas, com evidência, e a revisão clínica está registrada.

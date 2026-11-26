@@ -1,7 +1,7 @@
 ```
 Papel: Decisões de produto e schema da etapa 5 para duração, fuso, cancelamento fora da janela e destinatário de handoff, sem presumir recepção.
 Entrada: docs/status.md
-Relaciona-se com: ../arquitetura.md, ../etapas.md, 0004-conflito-de-horario.md, 0005-ordem-por-conversa.md, 0007-fks-compostas-por-tenant.md, 0008-conclusao-atomica-do-job.md
+Relaciona-se com: ../arquitetura.md, ../etapas.md, 0004-conflito-de-horario.md, 0005-ordem-por-conversa.md, 0007-fks-compostas-por-tenant.md, 0008-conclusao-atomica-do-job.md, ../guias_respostas/guia_respostas.md
 ```
 
 # 0009: Agendamento e handoff da etapa 5 sem presumir recepção
@@ -87,6 +87,32 @@ A 5.4 grava o handoff, mas o aviso ao responsável só é enviado a partir da et
 - `handoff_texto_paciente` continua `varchar(500)`, então o banco recusa um texto maior já na gravação da configuração. `texto_paciente` tem 600 caracteres para caber o texto da clínica com a frase do prazo.
 - Cada pedido grava uma linha, sem deduplicação. A nova tentativa de um job não duplica, pela atomicidade do ADR 0008. Não abrir um handoff novo quando já houver um aberto para a mesma conversa, motivo e agendamento fica para a etapa 13, registrado em [`status.md`](../status.md).
 
+## Revisão de 2026-11-26 (decisões 5 e 12 do guia de respostas)
+
+### Contexto
+
+O [guia de respostas](../guias_respostas/guia_respostas.md) registra duas decisões sobre o destinatário do handoff. Pela decisão 5, nas clínicas sem secretaria, o handoff vai para o profissional da consulta do paciente, ou para aquele com quem ele quer marcar. Pela decisão 12, quando o paciente não tem consulta nem preferência de profissional, o handoff vai para um destinatário padrão definido previamente pela clínica. É o roteamento por profissional que as Consequências deste ADR já previam como evolução.
+
+### Decisão
+
+- O destino do aviso deixa de ser sempre `clinicas.telefone_plantao`.
+- Sem recepção nem secretaria, o destino é o profissional da consulta do paciente, ou aquele com quem ele quer marcar.
+- Sem consulta nem preferência de profissional, o destino é o destinatário padrão definido pela clínica.
+- Com recepção ou secretaria, o destino segue a configuração da clínica.
+- `notificado_para` e `notificado_canal` continuam registrando o destino previsto, agora escolhido por essas regras.
+
+### Alternativas consideradas
+
+- Manter um número único de plantão para todo handoff. Descartada: numa clínica com mais de um profissional e sem secretaria, o aviso chegaria a quem não atende o paciente.
+- Escolher um profissional qualquer quando o paciente não tem consulta nem preferência. Descartada: o aviso poderia ir para quem não conhece o caso. A linha HU-01c do guia manda perguntar ao paciente antes e usar o destinatário padrão quando ele não souber.
+
+### Consequências
+
+- O destinatário configurável, descartado na decisão original por adiantar um roteamento que não existia, volta a fazer sentido. O formato no banco, com o telefone por profissional e o destinatário padrão, fica para o ADR de configuração da clínica, previsto antes da etapa 8 em [`status.md`](../status.md).
+- O código não muda nesta revisão. [`app/handoff/abertura.py`](../../app/handoff/abertura.py) continua gravando `clinicas.telefone_plantao` como destino previsto. A mudança é pendência antes da etapa 9.
+- Se um handoff passar a avisar mais de um destinatário, vale a consequência já registrada acima: o registro de notificações vira uma tabela própria.
+- A urgência continua sem depender do handoff.
+
 ## Status
 
-Aceita. Revista em 2026-11-24 (tarefa 5.4)
+Aceita. Revista em 2026-11-24 (tarefa 5.4) e em 2026-11-26 (decisões 5 e 12 do guia de respostas)
