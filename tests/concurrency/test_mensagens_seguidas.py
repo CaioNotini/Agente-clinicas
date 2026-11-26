@@ -11,7 +11,11 @@ A conversa criada pertence so ao tenant do job (segunda barreira pelo tenant).
 
 O worker (processar_um) conecta como worker_jobs so para a tabela jobs. Os dados
 de teste sao criados e removidos com a conta de administracao (cnotini).
+
+Desde a tarefa 7.2 o processamento le a mensagem do job e a classifica. Por isso
+cada job tem a sua linha em mensagens, e o LLM e um cliente falso, sem rede.
 """
+import functools
 import json
 import threading
 import time
@@ -26,6 +30,7 @@ from app.core.estados import IDLE
 from app.core.processamento import processar_mensagem
 from app.jobs.worker import processar_um, reivindicar_job
 from tests.concurrency.prazos import ESPERA_LOCK, juntar, limite_pytest
+from tests.llm_falso import ClienteFalso, saida_json
 
 # Conexao de administracao, so para preparar e limpar os dados do teste
 engine_admin = create_engine(MIGRATION_DATABASE_URL)
@@ -41,6 +46,9 @@ N_MENSAGENS = 6
 # (ADR 0005), e cada um segura o lock por HOLD ou espera no maximo lock_timeout.
 PRAZO_SERIE = N_MENSAGENS * (HOLD + ESPERA_LOCK)
 
+# processar_mensagem com um LLM falso que devolve a lista vazia
+processar = functools.partial(processar_mensagem, cliente_llm=ClienteFalso(saida_json()))
+
 
 def _criar_clinica(tenant_id):
     with engine_admin.begin() as conexao:
@@ -53,6 +61,7 @@ def _criar_clinica(tenant_id):
 def _limpar(tenant_id):
     with engine_admin.begin() as conexao:
         conexao.execute(text("DELETE FROM jobs WHERE tenant_id = :t"), {"t": tenant_id})
+        conexao.execute(text("DELETE FROM mensagens WHERE tenant_id = :t"), {"t": tenant_id})
         conexao.execute(text("DELETE FROM conversas WHERE tenant_id = :t"), {"t": tenant_id})
         conexao.execute(text("DELETE FROM clinicas WHERE tenant_id = :t"), {"t": tenant_id})
 
@@ -64,11 +73,19 @@ def _enfileirar_mensagem(tenant_id, contato_telefone, tenant_no_payload=None):
     diferente do tenant_id da coluna do job. Serve para provar que o
     processamento usa o tenant da coluna, nao o do payload.
     """
-    corpo = {"mensagem_id": uuid.uuid4().hex, "contato_telefone": contato_telefone}
+    mensagem_id = uuid.uuid4().hex
+    corpo = {"mensagem_id": mensagem_id, "contato_telefone": contato_telefone}
     if tenant_no_payload is not None:
         corpo["tenant_id"] = tenant_no_payload
     payload = json.dumps(corpo)
     with engine_admin.begin() as conexao:
+        conexao.execute(
+            text(
+                "INSERT INTO mensagens (id, tenant_id, contato_telefone, conteudo, direcao) "
+                "VALUES (:id, :t, :tel, 'oi', 'entrada')"
+            ),
+            {"id": mensagem_id, "t": tenant_id, "tel": contato_telefone},
+        )
         return conexao.execute(
             text(
                 "INSERT INTO jobs (tenant_id, type, status, payload, contato_telefone, "
@@ -198,7 +215,7 @@ def test_processar_mensagem_garante_conversa_no_tenant(tenant):
     """O processamento cria-ou-encontra a conversa do job, no estado inicial."""
     job_id = _enfileirar_mensagem(tenant, CONTATO)
 
-    job = processar_um(uuid.uuid4().hex, processamento=processar_mensagem)
+    job = processar_um(uuid.uuid4().hex, processamento=processar)
 
     assert job is not None and job.id == job_id
     assert _contar_conversas(tenant, CONTATO) == 1
@@ -210,7 +227,7 @@ def test_processar_mensagem_escreve_so_no_tenant_do_job(dois_tenants):
     tenant_a, tenant_b = dois_tenants
     _enfileirar_mensagem(tenant_a, CONTATO)
 
-    job = processar_um(uuid.uuid4().hex, processamento=processar_mensagem)
+    job = processar_um(uuid.uuid4().hex, processamento=processar)
     assert job is not None and job.tenant_id == tenant_a
 
     # So o tenant do job ganhou a conversa; o outro tenant nao foi tocado
@@ -229,7 +246,7 @@ def test_processar_mensagem_usa_tenant_da_coluna_nao_do_payload(dois_tenants):
     tenant_a, tenant_b = dois_tenants
     _enfileirar_mensagem(tenant_a, CONTATO, tenant_no_payload=tenant_b)
 
-    job = processar_um(uuid.uuid4().hex, processamento=processar_mensagem)
+    job = processar_um(uuid.uuid4().hex, processamento=processar)
     assert job is not None and job.tenant_id == tenant_a
 
     assert _contar_conversas(tenant_a, CONTATO) == 1
@@ -248,10 +265,10 @@ def test_reprocessar_mesmo_job_nao_duplica_conversa(tenant):
     _enfileirar_mensagem(tenant, CONTATO)
     job = reivindicar_job(uuid.uuid4().hex)
 
-    processar_mensagem(None, job)
+    processar(None, job)
     with engine_admin.begin() as conexao:
         conexao.execute(text("UPDATE jobs SET status = 'processing' WHERE id = :id"), {"id": job.id})
-    processar_mensagem(None, job)  # mesmo job de novo
+    processar(None, job)  # mesmo job de novo
 
     assert _contar_conversas(tenant, CONTATO) == 1
 
@@ -269,7 +286,7 @@ def test_mesmo_contato_em_duas_clinicas_gera_duas_conversas(dois_tenants):
     wid = uuid.uuid4().hex
     vistos = []
     for _ in range(2):
-        job = processar_um(wid, processamento=processar_mensagem)
+        job = processar_um(wid, processamento=processar)
         assert job is not None
         vistos.append(job.tenant_id)
 

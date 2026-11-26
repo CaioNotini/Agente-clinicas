@@ -14,12 +14,7 @@ import structlog
 from anthropic import APIConnectionError, APIError, APIStatusError
 
 from app.llm.base import ChamadaFerramenta, ConfigLLM, LLMClient, RespostaLLM
-from app.llm.erros import (
-    ErroLLM,
-    ErroLLMPermanente,
-    ErroLLMTransitorio,
-    EsquemaSaidaNaoSuportado,
-)
+from app.llm.erros import ErroLLM, ErroLLMPermanente, ErroLLMTransitorio
 
 log_estruturado = structlog.get_logger(__name__)
 
@@ -74,21 +69,23 @@ class AnthropicClient(LLMClient):
         ferramentas=None,
         esquema_saida=None,
     ) -> RespostaLLM:
-        # Ate a 7.2 o esquema nao e enviado a API. Aceita-lo em silencio devolveria
-        # texto livre a quem espera saida estruturada (C12 da rodada 5).
+        parametros = {
+            "model": self._config.modelo,
+            "max_tokens": self._config.max_tokens,
+            "system": system,
+            "messages": mensagens,
+            "tools": ferramentas or [],
+        }
+        # Saida estruturada (tarefa 7.2). Sem esquema, output_config nem e enviado e
+        # a chamada fica igual a da etapa 6. O esquema restringe a forma, mas quem
+        # valida o conteudo e o chamador (ADR 0012).
         if esquema_saida is not None:
-            raise EsquemaSaidaNaoSuportado(
-                "esquema_saida ainda nao suportado pelo AnthropicClient (tarefa 7.2)"
-            )
+            parametros["output_config"] = {
+                "format": {"type": "json_schema", "schema": esquema_saida}
+            }
         inicio = time.perf_counter()
         try:
-            resposta = self._sdk.messages.create(
-                model=self._config.modelo,
-                max_tokens=self._config.max_tokens,
-                system=system,
-                messages=mensagens,
-                tools=ferramentas or [],
-            )
+            resposta = self._sdk.messages.create(**parametros)
         except APIError as exc:
             latencia_ms = round((time.perf_counter() - inicio) * 1000)
             self._logar_falha(tenant_id, latencia_ms, exc)

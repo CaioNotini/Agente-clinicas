@@ -18,12 +18,7 @@ from app.core.erros import ErroPermanente
 from app.llm import anthropic_client
 from app.llm.anthropic_client import AnthropicClient, traduzir_erro
 from app.llm.base import ConfigLLM
-from app.llm.erros import (
-    ErroLLM,
-    ErroLLMPermanente,
-    ErroLLMTransitorio,
-    EsquemaSaidaNaoSuportado,
-)
+from app.llm.erros import ErroLLM, ErroLLMPermanente, ErroLLMTransitorio
 
 # --- dubles do SDK ---------------------------------------------------------
 
@@ -234,28 +229,29 @@ def test_erro_do_sdk_na_chamada_e_traduzido():
         cliente.completar(tenant_id="t_1", system="s", mensagens=[])
 
 
-# --- esquema_saida (C12, ate a tarefa 7.2) ---------------------------------
+# --- esquema_saida (saida estruturada, tarefa 7.2) -------------------------
 
 
 @pytest.mark.parametrize("esquema", [{"type": "object"}, {}])
-def test_esquema_saida_levanta_erro_permanente_sem_chamar_o_sdk(esquema):
-    sdk = _SdkFalso(resposta=_Mensagem([_BlocoTexto("nao deveria chegar aqui")]))
+def test_esquema_saida_vai_ao_sdk_em_output_config(esquema):
+    """Esquema preenchido, inclusive {}, vai como output_config.format json_schema."""
+    sdk = _SdkFalso(resposta=_Mensagem([_BlocoTexto('{"ok": true}')]))
     cliente = AnthropicClient(sdk, _CONFIG)
 
-    with capture_logs() as logs:
-        with pytest.raises(EsquemaSaidaNaoSuportado) as exc:
-            cliente.completar(
-                tenant_id="t_1",
-                system="s",
-                mensagens=[{"role": "user", "content": "oi"}],
-                esquema_saida=esquema,
-            )
+    resp = cliente.completar(
+        tenant_id="t_1",
+        system="s",
+        mensagens=[{"role": "user", "content": "oi"}],
+        esquema_saida=esquema,
+    )
 
-    # ErroPermanente leva o job a dead na primeira falha, sem gastar tentativas
-    assert isinstance(exc.value, ErroPermanente)
-    assert isinstance(exc.value, ErroLLMPermanente)
-    assert sdk.chamada is None
-    assert not [log for log in logs if log["event"].startswith("llm_")]
+    assert resp.texto == '{"ok": true}'
+    assert sdk.chamada["output_config"] == {
+        "format": {"type": "json_schema", "schema": esquema}
+    }
+    # O resto da chamada nao muda com o esquema
+    assert sdk.chamada["model"] == "claude-haiku"
+    assert sdk.chamada["messages"] == [{"role": "user", "content": "oi"}]
 
 
 def test_sem_esquema_saida_chama_o_sdk_como_antes():

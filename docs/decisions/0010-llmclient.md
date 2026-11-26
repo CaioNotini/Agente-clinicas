@@ -41,7 +41,7 @@ Os argumentos sao keyword-only para nenhum call site trocar a ordem sem perceber
 - `system`: texto do prompt de sistema.
 - `mensagens`: lista de mensagens no formato do projeto, cada uma com papel e conteúdo.
 - `ferramentas`: definições de ferramentas, opcional.
-- `esquema_saida`: esquema JSON da saída estruturada, opcional. A implementação real entra na tarefa 7.2. Até lá, o `AnthropicClient` levanta `EsquemaSaidaNaoSuportado` quando ele vem preenchido (`is not None`, inclusive `{}`), sem chamar o SDK. Aceitá-lo em silêncio devolveria texto livre a quem espera saída estruturada (C12 da [rodada 5](../diagnosticos/2026-11-25-rodada5.md)).
+- `esquema_saida`: esquema JSON da saída estruturada, opcional. Desde a tarefa 7.2, quando vem preenchido (`is not None`, inclusive `{}`), vai à API em `output_config.format`, com o tipo `json_schema`. Sem ele, `output_config` não é enviado. Até a 7.2 o esquema preenchido levantava `EsquemaSaidaNaoSuportado`, que foi removido (C12 da [rodada 5](../diagnosticos/2026-11-25-rodada5.md)).
 
 A resposta normalizada `RespostaLLM` tem:
 
@@ -70,8 +70,7 @@ O `AnthropicClient` traduz os erros do SDK para uma hierarquia própria:
 | ---- | ----- | -------------------- |
 | Base dos erros de LLM | Raiz da hierarquia | Não é levantada sozinha |
 | Erro transitório | Conexão, timeout, 408, 409, 429, 5xx e 529 | Volta para `pending` com o backoff da tarefa 6.4 |
-| Erro permanente, subclasse de `ErroPermanente` ([`erros.py`](../../app/core/erros.py)) | 400, 401, 403, 404 e 422 | Vai direto para `dead`, sem nova tentativa |
-| `EsquemaSaidaNaoSuportado`, subclasse do erro permanente | `esquema_saida` preenchido antes da tarefa 7.2. É erro de programação, sem chamada à API | Vai direto para `dead`, sem gastar as tentativas |
+| Erro permanente, subclasse de `ErroPermanente` ([`erros.py`](../../app/core/erros.py)) | 400, 401, 403, 404 e 422 | Vai direto para `dead`, sem nova tentativa. Na classificação, vale a regra e o job conclui (Revisão de 2026-11-26) |
 
 A mensagem do erro leva só o tipo, o status HTTP e o id da requisição. O texto do erro do provedor (`str(e)`) não entra, porque pode repetir dados da requisição, e o worker grava a mensagem em `jobs.last_error`. O mapeamento completo e os testes de cada status ficam na tarefa 6.2.
 
@@ -90,7 +89,7 @@ Onde a função mora e onde ela é chamada são coisas diferentes.
 - **Onde mora:** em [`app/llm/fabrica.py`](../../app/llm/fabrica.py). `criar_sdk_anthropic` é o único ponto de `app/` que cria o SDK, com o timeout e o `max_retries` fixos. `criar_cliente_llm` lê a configuração com `ler_config_llm` e devolve o `AnthropicClient`. O módulo de jobs não importa o SDK, então a troca de provedor (Bedrock, etapa 16) fica restrita a `app/llm/`. Um teste em [`test_cliente_llm.py`](../../tests/unit/test_cliente_llm.py) varre `app/` e falha se outro arquivo criar `Anthropic` ou `AsyncAnthropic`.
 - **Onde é chamada:** uma vez, no `main()` do worker, e o cliente é injetado no processamento. Se faltar a chave ou o modelo, o `RuntimeError` impede o worker de subir e nenhum job é consumido. Os testes que chamam o processamento direto recebem um dublê e nunca dependem de `LLM_MODEL` nem de `ANTHROPIC_API_KEY`. A CI continua sem essas variáveis.
 
-A ligação no worker não é feita na etapa 6, porque nada no processamento usa o LLM ainda. Criar o cliente na subida faria o worker exigir as duas variáveis sem usá-las. A ligação no `main()` entra na tarefa 7.2, quando o processamento passar a chamar o modelo. O teste real (`llm_real`) também cria o SDK por `criar_sdk_anthropic`.
+A ligação no worker não é feita na etapa 6, porque nada no processamento usa o LLM ainda. Criar o cliente na subida faria o worker exigir as duas variáveis sem usá-las. A ligação no `main()` entrou na tarefa 7.2, com a classificação (Revisão de 2026-11-26). O teste real (`llm_real`) também cria o SDK por `criar_sdk_anthropic`.
 
 ### Timeout e nova tentativa do SDK
 
@@ -146,6 +145,29 @@ A versão 2.x põe o cliente na versão atual da API desde a primeira linha de c
 - Trocar de modelo é trocar `LLM_MODEL`, sem mudança de código.
 - Um status HTTP que a tabela de erros não lista é decidido na tarefa 6.2, com teste.
 
+## Revisão de 2026-11-26 (tarefa 7.2)
+
+### Contexto
+
+A tarefa 7.2 é o primeiro uso do LLM no processamento. Ela precisava da saída estruturada, da ligação do cliente no worker e de uma conduta para o erro permanente na classificação. Com a conduta da etapa 6, uma chave revogada levaria cada mensagem de todas as clínicas a `dead`, uma por uma (C13 da [rodada 5](../diagnosticos/2026-11-25-rodada5.md)).
+
+### Decisão
+
+- O `AnthropicClient` envia `esquema_saida` em `output_config.format`, com o tipo `json_schema`. `EsquemaSaidaNaoSuportado` foi removido. O esquema restringe a forma do JSON, e quem valida o conteúdo é o chamador ([ADR 0012](./0012-saida-da-classificacao.md)).
+- O `main()` do worker cria o cliente com `criar_cliente_llm` e o injeta em `processar_mensagem`. O parâmetro `processamento` de `rodar` passou a ser obrigatório, para o laço nunca rodar o processamento sem cliente.
+- Na classificação, o erro permanente do LLM não sobe ao worker. Vale o resultado da regra, na hora, e o job conclui. O evento `classificacao_llm_erro_permanente` sai com nível de erro, com o tipo do erro e a classe do erro do SDK (por exemplo `AuthenticationError`), sem conteúdo. O erro transitório continua subindo, e o job tenta de novo com o backoff.
+- `MAX_TOKENS_PADRAO` passou de 1024 para 4096. Os tokens de raciocínio contam dentro do limite, e um corte vira saída inválida, que cai na regra. O valor ainda limita a saída de cada chamada a 4096 tokens.
+
+### Alternativas consideradas
+
+- Manter o erro permanente levando o job a `dead`. Descartada: a mensagem não seria classificada nem pela regra, e consertar a chave não reprocessa os jobs mortos.
+- Pausar o worker no primeiro 401 ou 403. Fica para a etapa 9, junto com a conduta depois de uma mensagem morta.
+
+### Consequências
+
+- O C13 fica resolvido em parte. As mensagens deixam de morrer, mas o sistema passa a funcionar só com a regra até alguém ver o log de erro. O alerta à operação e a pausa do worker ficam para a etapa 9.
+- O envio do esforço de raciocínio continua pendente. O `esforco` segue sem ir à API.
+
 ## Status
 
-Aceita
+Aceita. Revista em 2026-11-26 (tarefa 7.2)

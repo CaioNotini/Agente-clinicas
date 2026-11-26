@@ -9,9 +9,9 @@ DATABASE_URL. worker_jobs ignora o RLS, entao a captura cross-tenant da fila
 nao depende de app.tenant_id.
 
 Processamento: a funcao de processamento e um ponto de extensao
-(`processamento=`). O laco rodar() usa por padrao processar_mensagem
-(app/core/processamento.py, etapa 4.4). processar_um mantem processamento_vazio
-como padrao, para uso direto e testes.
+(`processamento=`). rodar() exige a funcao, e main() passa processar_mensagem
+(app/core/processamento.py) com o cliente LLM criado na subida (tarefa 7.2).
+processar_um mantem processamento_vazio como padrao, para uso direto e testes.
 
 Escritas especificas de clinica passam por uma sessao app_clinicas, com RLS de
 fato, dentro de processar_mensagem. O worker usa worker_jobs apenas para a
@@ -33,6 +33,7 @@ Erro permanente (app/core/erros.py, tarefa 5.4): o job vai para dead na primeira
 falha, sem gastar as outras tentativas, e gera log de erro com tenant_id, job_id e
 o tipo do erro. Outra tentativa falharia igual e so atrasaria a conversa.
 """
+import functools
 import logging
 import time
 import uuid
@@ -49,6 +50,7 @@ from app.core.erros import ErroPermanente
 from app.core.processamento import processar_mensagem
 from app.db.database import CONNECT_TIMEOUT_SEGUNDOS
 from app.jobs.queue import JobPerdido
+from app.llm.fabrica import criar_cliente_llm
 
 # Engine do worker, conectado com a conta worker_jobs (BYPASSRLS). Mesmo limite de
 # conexao da aplicacao: um banco inacessivel nao prende o laco do worker.
@@ -299,8 +301,8 @@ def varrer_orfaos_esgotados(
 
 
 def rodar(
+    processamento: Callable[[object, JobCapturado], None],
     worker_id: Optional[str] = None,
-    processamento: Callable[[object, JobCapturado], None] = processar_mensagem,
     limite_segundos: int = LIMITE_LOCK_SEGUNDOS,
     intervalo_ocioso: float = 1.0,
     engine=engine_worker,
@@ -331,7 +333,10 @@ def rodar(
 
 
 def main() -> None:
-    rodar()
+    # Sem LLM_MODEL ou ANTHROPIC_API_KEY, criar_cliente_llm levanta RuntimeError e o
+    # worker nao sobe (ADR 0010).
+    cliente_llm = criar_cliente_llm()
+    rodar(functools.partial(processar_mensagem, cliente_llm=cliente_llm))
 
 
 if __name__ == "__main__":

@@ -143,6 +143,38 @@ O motivo original do padrão `sintoma`, evitar o handoff forçado em excesso, de
 - A pendência da 7.3 sobre o texto da oferta soar natural numa pergunta está resolvida pelo texto novo da aba Mensagens fixas do guia.
 - O erro de subtipo continua medido à parte na etapa 10, agora como erro só de texto, sem efeito no handoff.
 
+## Revisão de 2026-11-26 (tarefa 7.2, combinação da regra com o LLM)
+
+### Contexto
+
+A seção Consequências deixou para a 7.2 a pendência de avaliar se a regra roda sempre antes do LLM. A seção Relação com outras decisões dizia que este ADR não define como combinar as duas origens. A 7.2 liga o LLM ao processamento e precisa dessa combinação, além de uma conduta para o erro do LLM.
+
+### Decisão
+
+- A regra roda sempre primeiro. Com `urgencia` no resultado da regra, vale o resultado da regra e o LLM não é chamado (curto-circuito). A urgência não espera a rede e não depende da chamada dar certo.
+- Sem urgência na regra, vale o resultado do LLM inteiro, com origem `llm`.
+- A urgência é a união das duas origens. O LLM pode acrescentar uma urgência que a regra não viu, mas não pode retirar a da regra, porque com a regra disparada ele nem é consultado. As demais categorias não são unidas.
+- Erro permanente do LLM (como 400 ou 401): vale o resultado da regra, na hora, com origem `regra`. O log é de nível de erro, com o tipo do erro e sem conteúdo. Sem isso, uma chave revogada faria o sistema degradar para só a regra sem ninguém perceber. Detalhes na revisão de 2026-11-26 do [ADR 0010](./0010-llmclient.md).
+- Erro transitório do LLM: o job tenta de novo, com o backoff do [ADR 0010](./0010-llmclient.md).
+- Saída inválida: além dos critérios da seção Formato, uma resposta com motivo de parada diferente de `end_turn` (como `refusal` ou `max_tokens`) também é inválida. Continua valendo a regra, com log de aviso e um código fixo de motivo, sem o conteúdo nem o que o modelo escreveu.
+- O classificador recebe só a mensagem atual. Se as respostas curtas ("sim", "terça") precisam de contexto fica para a etapa 9.
+- Na 7.2 o resultado vai só ao log estruturado, com origem, categorias, subtipo, confianças e latência, sem conteúdo nem telefone. O estado da conversa não muda.
+
+### Alternativas consideradas
+
+- Chamar o LLM mesmo com urgência na regra. Descartada: a mensagem de urgência ficaria esperando a rede, e uma falha da chamada a atrasaria pelo backoff.
+- Unir todas as categorias das duas origens. Descartada: um `clinico_bloqueado` falso da regra transformaria uma pergunta administrativa numa recusa, e a regra existe como piso só para a urgência.
+
+### Justificativa
+
+Na urgência, um falso negativo da regra é coberto pelo LLM, e um falso positivo não tem correção. Por isso a regra de urgência só dispara com frases fortes (princípios no docstring de [`regra.py`](../../app/classification/regra.py)). Nas demais categorias o LLM vê mais do que o vocabulário da regra.
+
+### Consequências
+
+- A pendência da 7.2 da seção Consequências está resolvida por esta revisão.
+- A Q-07 continua aberta para a etapa 10. A comparação entre regra e LLM pode mudar esta combinação.
+- `origem` continua com um valor só por resultado. O resultado é o da regra ou o do LLM, nunca uma mistura.
+
 ## Status
 
-Aceita. Revista em 2026-11-26 (decisões 13, 22 e 27 do guia de respostas)
+Aceita. Revista em 2026-11-26 (decisões 13, 22 e 27 do guia de respostas) e em 2026-11-26 (tarefa 7.2)

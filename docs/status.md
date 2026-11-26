@@ -10,7 +10,9 @@ Estado verificado em 2026-11-26. O histórico detalhado de cada mudança fica no
 
 ## Onde estamos
 
-**Etapa ativa: 7, classificação, mensagens fixas e auditoria. Tarefa 7.1 concluída. Próxima tarefa: 7.2.** As etapas 0 a 6 estão concluídas.
+**Etapa ativa: 7, classificação, mensagens fixas e auditoria. Tarefas 7.1 e 7.2 concluídas. Próxima tarefa: 7.3.** As etapas 0 a 6 estão concluídas.
+
+Tarefa 7.2 (concluída em 2026-11-26), resumo: classificação com LLM em [`app/classification/llm.py`](../app/classification/llm.py), com saída estruturada no `AnthropicClient`, e combinação com a regra em [`app/classification/classificador.py`](../app/classification/classificador.py). A regra roda primeiro. Com urgência na regra, o LLM não é chamado. Sem ela, vale o LLM. Erro permanente do LLM e saída inválida levam ao resultado da regra, e o erro transitório leva ao retry do job. O processamento lê a mensagem do job só no tenant e no contato do job, classifica e leva o resultado só ao log estruturado, sem mudar o estado da conversa. O worker cria o cliente no `main()`. `MAX_TOKENS_PADRAO` passou de 1024 para 4096. Decisões nas revisões de 2026-11-26 (tarefa 7.2) do [ADR 0012](./decisions/0012-saida-da-classificacao.md) e do [ADR 0010](./decisions/0010-llmclient.md). O código e os testes foram escritos pelo Claude e não constituem validação independente. O teste real da classificação foi escrito, mas não foi executado.
 
 Tarefa 7.1 (concluída em 2026-11-26), resumo: classificação por regra em [`app/classification/regra.py`](../app/classification/regra.py) e função de prioridade `decidir()` em [`app/classification/resultado.py`](../app/classification/resultado.py), com a saída do [ADR 0012](./decisions/0012-saida-da-classificacao.md). A regra é função pura, sem banco nem rede. Os princípios estão no docstring de `regra.py`. Na urgência, um falso positivo não tem correção, então na dúvida a regra não dispara. O piso são as 5 urgências de [`pergs_bloqueadas.md`](./fake_clinic/pergs_bloqueadas.md) e as linhas UR-01 e UR-02 do [guia](./guias_respostas/guia_respostas.md). A negação e o passado suprimem a urgência, exceto o passado na autolesão, que recebe a mensagem com o CVV. No clínico, na dúvida entre ampliar o vocabulário de saúde e deixar para o LLM, fica para o LLM.
 
@@ -19,13 +21,17 @@ Etapa 6 (concluída), resumo: chamada ao modelo por uma interface única. `LLMCl
 | Etapa  | Estado                       |
 | ------ | ---------------------------- |
 | 0 a 6  | concluídas                   |
-| 7      | em andamento (7.1 concluída) |
+| 7      | em andamento (7.1 e 7.2 concluídas) |
 | 8 a 21 | não iniciadas                |
 
 ## O que está verificado
 
 Última verificação em 2026-11-26, no banco do Docker local:
 
+- `pytest tests/ -q` = `902 passed`, 10 deselected (`llm_real`, 4 da etapa 6 e 6 da 7.2), 1 warning conhecido (TestClient do Starlette), em 2026-11-26, com o código da tarefa 7.2. Os testes novos ([`test_classificacao_llm.py`](../tests/unit/test_classificacao_llm.py), [`test_classificador.py`](../tests/unit/test_classificador.py) e [`test_processamento_classificacao.py`](../tests/concurrency/test_processamento_classificacao.py)) somam `71 passed`. black, isort e o pylint da CI passam, e o pylint completo de `app/classification` dá 10.00/10.
+- Prova por mutação da 7.2, em 2026-11-26, por script, com o código restaurado depois de cada uma. Sem o curto-circuito caem 4 testes. Capturar qualquer exceção no lugar do erro permanente derruba 7, entre eles o retry do erro transitório. O erro permanente logado com nível info derruba 2. Sem o filtro de tenant na leitura da mensagem cai 1, o teste que roda sem RLS pela conta de administração. Com o RLS ativo, a policy barra sozinha. Sem o filtro de contato cai 1, sem o filtro de direção cai 1, e aceitar `refusal` como saída válida derruba 2.
+- Isolamento da leitura da mensagem, pela conta `app_clinicas`: um job da clínica A com o `mensagem_id` de uma mensagem da clínica B vai para `dead`, o LLM não é chamado e nem a conversa fica criada.
+- Não verificado: o teste real da classificação ([`test_classificacao_real.py`](../tests/llm_real/test_classificacao_real.py)), que aguarda a aprovação da execução. Sem ele, não há evidência de que a API aceita o esquema nem de que 4096 tokens bastam com o raciocínio adaptativo.
 - `pytest tests/ -q` = `831 passed`, 4 deselected (`llm_real`), 1 warning conhecido (TestClient do Starlette), em 2026-11-26, com o código da tarefa 7.1. Os testes de classificação ([`test_classificacao_regra.py`](../tests/unit/test_classificacao_regra.py), [`test_prioridade.py`](../tests/unit/test_prioridade.py) e [`test_classificacao_resultado.py`](../tests/unit/test_classificacao_resultado.py)) somam `261 passed`. black, isort e o pylint da CI passam, e o pylint completo de `app/classification` dá 10.00/10.
 - Prova por mutação da 7.1, em 2026-11-26, à mão e com o código restaurado depois de cada uma. Trocar `dor no peito` por `peito` derruba 3 testes. Aceitar `devo` sozinho como pedido de orientação derruba 2, entre eles a AG-09. Remover a negação do termo de saúde derruba 3. `decidir()` na ordem de entrada derruba 10. Aplicar o passado também à autolesão derruba o teste de "Tentei me matar ano passado". Sem a negação na urgência caem 4, sem o passado caem 3 e sem a marca de agora cai 1.
 - Verificação da regra contra as 233 mensagens e variações da aba Guia de respostas da [planilha](./guias_respostas/guia_respostas.xlsx), em 2026-11-26. Nenhum `clinico_bloqueado` falso. A única urgência fora de uma linha de urgência é a variação "[áudio descrevendo dor no peito]" da WA-06, que deve mesmo ser urgência depois da transcrição. Oito mensagens `clinico_bloqueado` não são reconhecidas pela regra e ficam para o LLM, como "é só sua opinião" (DV-03) e "qual a dose?" (CB-01).
@@ -56,6 +62,8 @@ O que o código garante hoje, com a decisão de cada ponto:
 
 ## Decisões recentes
 
+- 2026-11-26, tarefa 7.2: a regra roda primeiro e, com urgência, o LLM não é chamado. A urgência é a união das duas origens. Erro permanente do LLM leva à regra na hora, com log de nível de erro. Só a mensagem atual vai ao classificador. O resultado vai só ao log estruturado. Detalhes nas revisões de 2026-11-26 (tarefa 7.2) do [ADR 0012](./decisions/0012-saida-da-classificacao.md) e do [ADR 0010](./decisions/0010-llmclient.md).
+
 - 2026-11-26: decisão 27 do [guia de respostas](./guias_respostas/guia_respostas.md). Nenhum handoff é aberto sem a confirmação do paciente, exceto no pedido de falar com uma pessoa e no erro `ConfiguracaoInvalida`. A orientação de emergência continua saindo sempre e na hora, e a oferta de avisar o profissional vem depois, em mensagem separada. Os dois subtipos de `clinico_bloqueado` fazem a oferta, com textos diferentes. A oferta e as transições entram na tarefa 9.5. Na 7.5, só a mensagem de urgência sai, sem mudar o estado. Detalhes nas seções 8.1, 8.3 e 8.4 da [arquitetura](./arquitetura.md) (versão 2.4) e nas revisões de 2026-11-26 dos ADRs [0003](./decisions/0003-grafo-de-transicoes.md), [0009](./decisions/0009-agendamento-handoff-etapa5.md) e [0012](./decisions/0012-saida-da-classificacao.md). Nada disso está implementado ainda.
 
 - 2026-11-26: [ADR 0012](./decisions/0012-saida-da-classificacao.md), saída da classificação, antes da 7.1. A regra e o LLM devolvem a mesma lista de intenções, com a origem. O LLM só rotula, e uma função pura decide. Limites de 0,5 para `urgencia` e `clinico_bloqueado` e 0,7 para as demais, a calibrar na etapa 10. Subtipo `pergunta` ou `sintoma` em `clinico_bloqueado`, com `sintoma` quando incerto. A D-09 foi revista na versão 2.3 da [arquitetura](./arquitetura.md). Nada disso está implementado ainda.
@@ -70,7 +78,8 @@ O que o código garante hoje, com a decisão de cada ponto:
 
 **Previstas para etapas futuras**
 
-- 7.2: avaliar se a regra roda sempre antes do LLM, como primeira linha de defesa. Se ela detectar `urgencia`, a mensagem sai sem esperar o LLM, o que também cobre a falha ou o timeout da chamada ([ADR 0012](./decisions/0012-saida-da-classificacao.md)).
+- 9: decidir se as respostas curtas ("sim", "terça") precisam de contexto no classificador ou se o estado da conversa (`aguardando_confirmacao`, `coletando_info`) já resolve. Na 7.2 o classificador recebe só a mensagem atual ([ADR 0012](./decisions/0012-saida-da-classificacao.md)). Se precisar, o contexto vem das últimas N mensagens do contato, direto de `mensagens`, com a avaliação do índice `(tenant_id, contato_telefone, criada_em)`.
+- 9: C13 da [rodada 5](./diagnosticos/2026-11-25-rodada5.md), resolvido em parte na 7.2. Com erro permanente do LLM, a mensagem não vai mais para `dead` e vale a regra, com log de erro. Falta o alerta à operação e decidir se o worker pausa no primeiro 401 ou 403, junto com a conduta depois de uma mensagem morta.
 - 7.3: quatro mensagens fixas em [`fixas.py`](../app/mensagens/fixas.py): urgência com o 192 ou o pronto-socorro e o CVV (188), oferta de aviso depois da urgência, clínico bloqueado com a oferta e oferta de atendimento (seção 8.3 da [arquitetura](./arquitetura.md#83-escopo-clínico)). Hoje `MENSAGEM_URGENCIA` não cita o CVV, `MENSAGEM_CLINICO_BLOQUEADO` ainda promete o retorno do responsável e as duas ofertas não existem.
 - 9.5: o cancelamento fora da janela com política `handoff` abre o handoff direto desde a etapa 5. Pela decisão 27, ele passa a oferecer o encaminhamento, e o agendamento continua ativo se o paciente recusar (revisão de 2026-11-26 do [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md)).
 - 9.5: aresta `idle -> aguardando_confirmacao` em `app/core/estados.py`, usada pelas ofertas da decisão 27 (revisão de 2026-11-26 do [ADR 0003](./decisions/0003-grafo-de-transicoes.md)). Até lá, o grafo executável não tem a aresta.
@@ -83,9 +92,7 @@ O que o código garante hoje, com a decisão de cada ponto:
 - Antes da 9: destinatário do handoff por profissional e destinatário padrão em [`app/handoff/abertura.py`](../app/handoff/abertura.py) (revisão de 2026-11-26 do [ADR 0009](./decisions/0009-agendamento-handoff-etapa5.md)).
 - Antes da 9: política para pedidos fora da antecedência (recusar, handoff ou agendar) em `regras_agendamento`.
 - 17: ADR do provedor de transcrição de áudio (Whisper local no estudo, Amazon Transcribe no MVP).
-- 7.2: implementar a saída estruturada no `AnthropicClient` e remover `EsquemaSaidaNaoSuportado`. Hoje `esquema_saida` preenchido levanta esse erro, que leva o job a `dead` ([ADR 0010](./decisions/0010-llmclient.md)).
-- 7.2: nenhuma chamada ao LLM entre o INSERT de agendamento e o commit da transação. O lock da agenda do profissional fica até o commit, e a espera dos outros pacientes passaria do `lock_timeout` ([ADR 0011](./decisions/0011-lock-de-agenda-por-profissional.md)). O texto de resposta é gerado antes da gravação ou depois do commit.
-- 7.2: chamar `criar_cliente_llm` no `main()` do worker e injetar o cliente no processamento ([ADR 0010](./decisions/0010-llmclient.md)). Hoje a função existe, mas nada a chama.
+- 9: nenhuma chamada ao LLM entre o INSERT de agendamento e o commit da transação. O lock da agenda do profissional fica até o commit, e a espera dos outros pacientes passaria do `lock_timeout` ([ADR 0011](./decisions/0011-lock-de-agenda-por-profissional.md)). O texto de resposta é gerado antes da gravação ou depois do commit.
 - 9: o timeout do LLM é por chamada. Um job com várias chamadas (classificação e function calling) pode somar mais que os 300 s do limite de órfão ([ADR 0010](./decisions/0010-llmclient.md)).
 - 8: o [`FAQ.md`](./fake_clinic/FAQ.md) não tem mais entradas clínicas. O critério "trechos marcados como bloqueado nunca são retornados" vai precisar de um trecho clínico de teste criado na própria etapa 8.
 
@@ -94,7 +101,7 @@ O que o código garante hoje, com a decisão de cada ponto:
 - 13: `handoffs` mistura `responder_ate` (timestamptz) com `criada_em`, `notificado_em`, `assumido_em` e `devolvido_em` (timestamp sem fuso). Resolver antes de comparar o prazo com esses instantes (C10 da rodada 4).
 - 14: validar o nome do fuso ao gravar a configuração da clínica.
 - 14: com entradas fora da fila, um `23P01` contra agendamento do próprio contato, sobreposto e com outro início, dá `HorarioIndisponivel` em vez de `AgendamentoDuplicado`, tanto na criação quanto na remarcação. Na remarcação o antigo continua ativo, porque o erro sobe pelo SAVEPOINT. Faz parte da ressalva sobre entradas fora da fila na seção 7 da [arquitetura](./arquitetura.md#7-modelo-de-dados).
-- 7: o `mensagem_id` passado ao serviço deve vir do job. A FK garante a mesma clínica, mas não o mesmo contato.
+- 9: o `mensagem_id` passado ao serviço de agendamento deve vir do job. A FK garante a mesma clínica, mas não o mesmo contato. Na 7.2 a leitura da mensagem já filtra por tenant e contato do job.
 - LGPD: a exclusão do titular que apague agendamentos precisa tratar antes os handoffs que apontam para eles (FK `NO ACTION`).
 - Outros erros permanentes, como o payload sem `contato_telefone`, ainda consomem as 3 tentativas.
 - `55P03` na gravação de agendamento, seja esperando o lock da agenda do profissional, seja na verificação da constraint, vira `ConcorrenciaNaAgenda` desde 2026-11-25 ([ADR 0011](./decisions/0011-lock-de-agenda-por-profissional.md)), e o job tenta de novo. O `55P03` do lock da conversa continua sem tratamento próprio.
@@ -108,7 +115,6 @@ O que o código garante hoje, com a decisão de cada ponto:
 - 10: persistir tokens, latência e modelo de cada chamada ao LLM numa tabela, com policy, `TABELAS_TENANT` e testes de isolamento. Na etapa 6 eles vão só ao log estruturado ([ADR 0010](./decisions/0010-llmclient.md)).
 - 12: índices das colunas filhas das FKs, índice parcial da fila e retenção de jobs (C1 e C5).
 - 12: teste de UPDATE que move uma linha própria para outra clínica (`SET tenant_id`), recusado pelo WITH CHECK da policy (C9 da rodada 4).
-- 7: montar o contexto do LLM com as últimas N mensagens do contato, direto de `mensagens`, e avaliar o índice `(tenant_id, contato_telefone, criada_em)` em `mensagens` (substitui o C6, resolvido em 2026-11-25 com a remoção de `conversas.historico`).
 - 17: derivar o `tenant_id` do número de destino no webhook (A7), e envio de WhatsApp como job novo, com idempotência no provedor (ADR 0008).
 - 15: `ON DELETE SET NULL (mensagem_id)` exige Postgres 15 ou mais. Conferir a versão do Supabase na tarefa 15.2 (C11 da rodada 4).
 

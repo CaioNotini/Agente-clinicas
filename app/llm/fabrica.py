@@ -2,7 +2,7 @@
 
 O cliente e chamado no main() do worker, mas mora aqui, para que o modulo de jobs
 nao importe o SDK e a troca de provedor (Bedrock, etapa 16) fique restrita a app/llm/.
-A ligacao no main() entra na tarefa 7.2, quando o processamento passar a usar o modelo.
+A ligacao no main() entrou na tarefa 7.2, com a classificacao.
 
 timeout e max_retries ficam fixos aqui, e nenhum outro lugar de app/ cria o SDK
 (tests/unit/test_cliente_llm.py confere):
