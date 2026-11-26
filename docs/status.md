@@ -6,24 +6,31 @@ Relaciona-se com: etapas.md, estudo.md, arquitetura.md, principios.md, decisions
 
 # Status do projeto
 
-Estado verificado em 2026-11-25. O histórico detalhado de cada mudança fica no git log e nos [ADRs](./decisions/README.md).
+Estado verificado em 2026-11-26. O histórico detalhado de cada mudança fica no git log e nos [ADRs](./decisions/README.md).
 
 ## Onde estamos
 
-**Etapa 6 concluída. Próxima etapa ativa: 7, classificação, mensagens fixas e auditoria.** As etapas 0 a 6 estão concluídas.
+**Etapa ativa: 7, classificação, mensagens fixas e auditoria. Tarefa 7.1 concluída. Próxima tarefa: 7.2.** As etapas 0 a 6 estão concluídas.
+
+Tarefa 7.1 (concluída em 2026-11-26), resumo: classificação por regra em [`app/classification/regra.py`](../app/classification/regra.py) e função de prioridade `decidir()` em [`app/classification/resultado.py`](../app/classification/resultado.py), com a saída do [ADR 0012](./decisions/0012-saida-da-classificacao.md). A regra é função pura, sem banco nem rede. Os princípios estão no docstring de `regra.py`. Na urgência, um falso positivo não tem correção, então na dúvida a regra não dispara. O piso são as 5 urgências de [`pergs_bloqueadas.md`](./fake_clinic/pergs_bloqueadas.md) e as linhas UR-01 e UR-02 do [guia](./guias_respostas/guia_respostas.md). A negação e o passado suprimem a urgência, exceto o passado na autolesão, que recebe a mensagem com o CVV. No clínico, na dúvida entre ampliar o vocabulário de saúde e deixar para o LLM, fica para o LLM. `regra.py` e `decidir()` foram escritos pelo Claude no chat e revisados pelo desenvolvedor. Os testes novos da 7.1 também foram escritos pelo Claude e aprovados pelo desenvolvedor, então não constituem validação independente. A regra ainda não é chamada pelo processamento. Isso entra na 7.2.
 
 Etapa 6 (concluída), resumo: chamada ao modelo por uma interface única. `LLMClient` e a implementação `AnthropicClient` sobre o SDK `anthropic==2.14.0` (versão `2026-10-21` da API), com o modelo em `LLM_MODEL` (`claude-haiku-5-5`), validado só na criação do cliente. Hierarquia de erros transitório e permanente, com o permanente herdando de `ErroPermanente`. Telemetria de cada chamada no log estruturado, nos eventos `llm_chamada` e `llm_chamada_falhou`, sem prompt, conteúdo nem telefone. Backoff exponencial com teto no retry de jobs, só no retry e nunca no `dead` (fórmula e valores no [ADR 0010](./decisions/0010-llmclient.md)). Teste real com o marcador `llm_real`, fora da CI. Decisões em [ADR 0010](./decisions/0010-llmclient.md) e [ADR 0005](./decisions/0005-ordem-por-conversa.md). O processamento ainda não chama o LLM. A ligação com o conteúdo da mensagem entra na etapa 7, com a classificação. Antes da 7.1, em 2026-11-25, a criação do SDK passou a ter um único ponto, [`app/llm/fabrica.py`](../app/llm/fabrica.py), que fixa `max_retries=0` e o timeout (A8 e B20 da [rodada 5](./diagnosticos/2026-11-25-rodada5.md)).
 
 | Etapa  | Estado        |
 | ------ | ------------- |
 | 0 a 6  | concluídas    |
-| 7 a 21 | não iniciadas |
+| 7      | em andamento (7.1 concluída) |
+| 8 a 21 | não iniciadas |
 
 ## O que está verificado
 
-Última verificação em 2026-11-25, no banco do Docker local:
+Última verificação em 2026-11-26, no banco do Docker local:
 
-- `pytest tests/ -q` = `500 passed`, 4 deselected (`llm_real`), 1 warning conhecido (TestClient do Starlette), em 2026-11-25, no banco local no head `a5587f532a88`, com o código dos blocos 1 a 4 da [rodada 5](./diagnosticos/2026-11-25-rodada5.md). Rodado com `pytest-asyncio`, `pytest-mock`, `ruff` e `mypy` desinstalados do `.venv`, o que confirma que a suíte não depende deles (B22). Antes, em 2026-11-24, a suíte tinha `448 passed` num ambiente limpo instalado do zero pelo `requirements-dev.txt`. Esse ambiente limpo não foi repetido com o `requirements-dev.txt` atual.
+- `pytest tests/ -q` = `831 passed`, 4 deselected (`llm_real`), 1 warning conhecido (TestClient do Starlette), em 2026-11-26, com o código da tarefa 7.1. Os testes de classificação ([`test_classificacao_regra.py`](../tests/unit/test_classificacao_regra.py), [`test_prioridade.py`](../tests/unit/test_prioridade.py) e [`test_classificacao_resultado.py`](../tests/unit/test_classificacao_resultado.py)) somam `261 passed`. black, isort e o pylint da CI passam, e o pylint completo de `app/classification` dá 10.00/10.
+- Prova por mutação da 7.1, em 2026-11-26, à mão e com o código restaurado depois de cada uma. Trocar `dor no peito` por `peito` derruba 3 testes. Aceitar `devo` sozinho como pedido de orientação derruba 2, entre eles a AG-09. Remover a negação do termo de saúde derruba 3. `decidir()` na ordem de entrada derruba 10. Aplicar o passado também à autolesão derruba o teste de "Tentei me matar ano passado". Sem a negação na urgência caem 4, sem o passado caem 3 e sem a marca de agora cai 1.
+- Verificação da regra contra as 233 mensagens e variações da aba Guia de respostas da [planilha](./guias_respostas/guia_respostas.xlsx), em 2026-11-26. Nenhum `clinico_bloqueado` falso. A única urgência fora de uma linha de urgência é a variação "[áudio descrevendo dor no peito]" da WA-06, que deve mesmo ser urgência depois da transcrição. Oito mensagens `clinico_bloqueado` não são reconhecidas pela regra e ficam para o LLM, como "é só sua opinião" (DV-03) e "qual a dose?" (CB-01).
+
+- Antes da 7.1: `pytest tests/ -q` = `500 passed`, 4 deselected (`llm_real`), 1 warning conhecido (TestClient do Starlette), em 2026-11-25, no banco local no head `a5587f532a88`, com o código dos blocos 1 a 4 da [rodada 5](./diagnosticos/2026-11-25-rodada5.md). Rodado com `pytest-asyncio`, `pytest-mock`, `ruff` e `mypy` desinstalados do `.venv`, o que confirma que a suíte não depende deles (B22). Antes, em 2026-11-24, a suíte tinha `448 passed` num ambiente limpo instalado do zero pelo `requirements-dev.txt`. Esse ambiente limpo não foi repetido com o `requirements-dev.txt` atual.
 - `pytest -m llm_real -v`, rodado pelo desenvolvedor em 2026-11-25 = `4 passed`, 490 deselected. Única execução paga, aprovada na implementação e no teste (regra 22). Não roda na CI.
 - O banco local estava em `c3d8e5a1f297` e foi levado ao head `a5587f532a88` com `alembic upgrade head` em 2026-11-25. O `alembic check` passou ("No new upgrade operations detected.").
 - CI mais recente verificada: run `45678396796`, commit `706dce9`, sucesso. Log lido: o ciclo de migrations (`upgrade head`, `downgrade base`, `upgrade head`) aplica a `a5587f532a88`, o `alembic check` não acusa diferença, [`scripts/verificar_pks.sql`](../scripts/verificar_pks.sql) confirma chave primária em todas as tabelas e o pytest dá `490 passed, 4 deselected`. Os commits dos blocos 1 a 4 da rodada 5 ainda não foram enviados ao GitHub e não têm CI.

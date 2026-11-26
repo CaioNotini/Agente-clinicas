@@ -278,8 +278,266 @@ def test_urgencia_no_fim_de_texto_longo():
         "sangrou um pouco depois da extração, é normal?",
         "a dor nas costas melhorou, quero remarcar",
         "minha mãe desmaiou de rir quando viu o preço",
+        "a camisa ficou apertada no peito",
         "x" * 4096,
     ],
 )
 def test_falso_positivo_de_urgencia(texto):
     assert URGENCIA not in _categorias(texto)
+
+
+# --- negacao do termo de saude ---
+
+
+@pytest.mark.parametrize(
+    "linha, texto",
+    [
+        ("OD-03", "É urgente, mas não dói"),
+        (None, "Não doeu nada depois da limpeza"),
+        (None, "Fiquei sem febre"),
+    ],
+)
+def test_termo_de_saude_negado_nao_e_clinico(linha, texto):
+    assert CLINICO_BLOQUEADO not in _categorias(texto), linha
+
+
+@pytest.mark.parametrize(
+    "texto, subtipo",
+    [
+        ("O dente não dói, mas está muito inchado", SINTOMA),
+        (
+            "Sem febre, mas com dor de cabeça há dias, o que faço com essa dor?",
+            PERGUNTA,
+        ),
+    ],
+)
+def test_negacao_nao_esconde_outro_termo_de_saude(texto, subtipo):
+    intencao = _intencao(texto, CLINICO_BLOQUEADO)
+    assert intencao is not None
+    assert intencao.subtipo == subtipo
+
+
+# --- urgencia: negacao, historico e expressoes amplas ---
+# Um falso positivo da regra de urgencia nao tem correcao, porque o LLM nao e
+# consultado. Na duvida, a regra nao dispara.
+
+
+@pytest.mark.parametrize(
+    "texto",
+    [
+        # negacao
+        "Não estou com dor no peito, só quero um check-up com o cardiologista",
+        "Não tenho falta de ar, é só uma tosse chata",
+        # historico
+        "Desmaiei semana passada e quero marcar uma consulta",
+        "Tive dor no peito mês passado, quero marcar retorno com o cardiologista",
+        # expressao ampla
+        "Falta ar condicionado na sala de espera?",
+        "Se eu esperar mais uma hora vou morrer de tédio",
+        "Não consigo respirar pelo nariz entupido, quero marcar otorrino",
+        "Vocês fazem harmonização para rosto caído?",
+        "Tomo vários remédios de uma vez de manhã, tudo bem?",
+        "Meu filho teve convulsão febril há 2 anos, quero marcar neuro",
+        # sangramento sem sinal de que esta ativo e sem controle: o LLM decide
+        "Tenho sangramento forte na menstruação, quero marcar ginecologista",
+    ],
+)
+def test_urgencia_nao_dispara_em_negacao_historico_ou_expressao_ampla(texto):
+    assert URGENCIA not in _categorias(texto)
+
+
+@pytest.mark.parametrize(
+    "texto, esperado",
+    [
+        ("Desmaiei semana passada e quero marcar uma consulta", AGENDAMENTO),
+        (
+            "Tive dor no peito mês passado, quero marcar retorno com o cardiologista",
+            AGENDAMENTO,
+        ),
+        (
+            "Não consigo respirar pelo nariz entupido, quero marcar otorrino",
+            AGENDAMENTO,
+        ),
+        ("Não tenho falta de ar, é só uma tosse chata", CLINICO_BLOQUEADO),
+        ("Tomo vários remédios de uma vez de manhã, tudo bem?", CLINICO_BLOQUEADO),
+        ("Meu filho teve convulsão febril há 2 anos, quero marcar neuro", AGENDAMENTO),
+    ],
+)
+def test_sem_urgencia_a_outra_intencao_continua(texto, esperado):
+    assert esperado in _categorias(texto)
+
+
+# --- termo de saude ambiguo nao basta para clinico ---
+
+
+@pytest.mark.parametrize(
+    "texto, esperado",
+    [
+        ("Moro em Uberlândia MG, vocês aceitam convênio daqui?", ADMINISTRATIVO),
+        ("Vocês aplicam a segunda dose da vacina?", ADMINISTRATIVO),
+        ("O resultado do meu exame já saiu? Posso buscar hoje?", ADMINISTRATIVO),
+        # ansiedade como especialidade: pedido de atendimento (decisao 4)
+        ("Vocês têm psicólogo que atende ansiedade?", AGENDAMENTO),
+    ],
+)
+def test_termo_ambiguo_nao_vira_clinico(texto, esperado):
+    categorias = _categorias(texto)
+    assert CLINICO_BLOQUEADO not in categorias
+    assert esperado in categorias
+
+
+# --- quem esta agendando nao faz pergunta clinica (decisao 4) ---
+
+
+@pytest.mark.parametrize(
+    "linha, texto",
+    [
+        (None, "Oi, tudo bem? Tô com dor no joelho, quero marcar com ortopedista"),
+        (None, "Quero marcar pra dor no joelho, pode ser sexta?"),
+        (None, "O que faço para marcar consulta pra dor nas costas?"),
+        (None, "Tô com dor nas costas, deveria marcar com quem?"),
+        # variantes da AG-09 na planilha
+        ("AG-09", "qual médico eu procuro pra isso?"),
+        ("AG-09", "Que especialista devo procurar pra dor nas costas?"),
+    ],
+)
+def test_pedido_de_agendamento_com_sintoma_nao_e_pergunta_clinica(linha, texto):
+    categorias = _categorias(texto)
+    assert AGENDAMENTO in categorias, linha
+    assert CLINICO_BLOQUEADO not in categorias, linha
+
+
+# --- substantivo solto nao e pedido de agendamento ---
+
+
+def test_marca_como_substantivo_nao_e_agendamento():
+    texto = "Tenho uma marca vermelha na pele que coça e dói"
+    categorias = _categorias(texto)
+    assert AGENDAMENTO not in categorias
+    assert _intencao(texto, CLINICO_BLOQUEADO).subtipo == SINTOMA
+
+
+def test_negacao_parcial_nao_apaga_o_sintoma():
+    # "nao doi so quando..." afirma que doi no resto do tempo
+    texto = "Não dói só quando fico deitado, o que eu faço?"
+    assert CLINICO_BLOQUEADO in _categorias(texto)
+
+
+# --- expressoes que generalizam, nao a frase copiada da fonte ---
+# Cada caso e uma variacao que a frase literal (muita sede, seria bom pra, voce
+# tomaria, acab\w+ de desmaiar, atendem isso) nao pega.
+
+
+@pytest.mark.parametrize(
+    "texto, subtipo",
+    [
+        # muita sede
+        ("Minha boca vive seca, é normal?", PERGUNTA),
+        # seria bom pra / voce tomaria
+        ("Que remédio você recomenda?", PERGUNTA),
+        ("O que você usaria pra dor de cabeça?", PERGUNTA),
+        ("O que é bom pra dor de garganta?", PERGUNTA),
+        ("Você indica algum remédio pra enxaqueca?", PERGUNTA),
+    ],
+)
+def test_variacao_de_frase_copiada_e_clinico(texto, subtipo):
+    intencao = _intencao(texto, CLINICO_BLOQUEADO)
+    assert intencao is not None
+    assert intencao.subtipo == subtipo
+
+
+@pytest.mark.parametrize(
+    "texto",
+    [
+        # acab\w+ de desmaiar
+        "Ela desmaiou agora há pouco",
+        "Meu pai desmaiou agora e não acorda",
+    ],
+)
+def test_variacao_de_desmaio_atual_e_urgencia(texto):
+    assert URGENCIA in _categorias(texto)
+
+
+def test_variacao_de_atendem_isso_e_agendamento():
+    # atendem isso (AG-09b)
+    categorias = _categorias("Tô com dor no joelho, vocês tratam isso aí?")
+    assert AGENDAMENTO in categorias
+    assert CLINICO_BLOQUEADO not in categorias
+
+
+@pytest.mark.parametrize(
+    "texto",
+    [
+        # sede tambem e endereco, e banheiro nao e termo de saude
+        "Onde fica a sede da clínica?",
+        "Onde fica o banheiro?",
+    ],
+)
+def test_palavra_comum_nao_vira_termo_de_saude(texto):
+    assert CLINICO_BLOQUEADO not in _categorias(texto)
+
+
+# --- autolesao: a negacao suprime, o passado nao ---
+
+
+@pytest.mark.parametrize(
+    "texto, outra",
+    [
+        # historico de tentativa recebe a mensagem com o CVV
+        ("Tentei me matar ano passado, quero marcar psicólogo", AGENDAMENTO),
+    ],
+)
+def test_autolesao_no_passado_continua_urgencia(texto, outra):
+    categorias = _categorias(texto)
+    assert URGENCIA in categorias
+    assert outra in categorias
+
+
+@pytest.mark.parametrize(
+    "texto, outra",
+    [
+        ("Não quero me machucar, só tomar remédio pra ansiedade", CLINICO_BLOQUEADO),
+        ("Não penso em me matar, só ando triste", None),
+    ],
+)
+def test_autolesao_negada_nao_e_urgencia(texto, outra):
+    categorias = _categorias(texto)
+    assert URGENCIA not in categorias
+    if outra:
+        assert outra in categorias
+
+
+# --- urgencia no presente: convulsao, overdose, marca de agora ---
+
+
+@pytest.mark.parametrize(
+    "texto",
+    [
+        "Meu filho está convulsionando",
+        "Ele teve uma convulsão agora",
+        "Estou tendo uma overdose",
+        "Acho que ele tá tendo uma overdose",
+        "Acho que tomei uma overdose",
+        "Ela tomou uma overdose",
+        # o passado nao suprime quando o trecho tem marca de agora
+        "Meu pai teve AVC há 2 anos e agora está com a boca torta",
+        # dias nao contam como passado
+        "Estou com falta de ar há 3 dias",
+    ],
+)
+def test_urgencia_no_presente(texto):
+    assert URGENCIA in _categorias(texto)
+
+
+@pytest.mark.parametrize(
+    "texto, outra",
+    [
+        ("Meu remédio pra convulsão acabou, posso marcar retorno?", AGENDAMENTO),
+        ("Tive overdose ano passado", None),
+    ],
+)
+def test_convulsao_ou_overdose_fora_do_presente_nao_e_urgencia(texto, outra):
+    categorias = _categorias(texto)
+    assert URGENCIA not in categorias
+    if outra:
+        assert outra in categorias
